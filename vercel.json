@@ -1,15 +1,9 @@
 {
-   
-    "build": {
-      "env": {
-        "NPM_FLAGS": "--legacy-peer-deps" 
-      }
-    },
-    "outputDirectory": "dist",
-  
+    "buildCommand": "npm run build",
+    "outputDirectory": "build/client",
     "rewrites": [
-      { 
-        "source": "/(.*)", 
+      {
+        "source": "/(.*)",
         "destination": "/index.html"
       }
     ]
