@@ -227,7 +227,7 @@ export default function History() {
       )}
 
       <div className="grid grid-cols-4 gap-1 px-4 pb-2">
-        {['All', 'Danny', 'Dewi', 'Together'].map((s) => (
+        {['All', 'Agung', 'Dewi', 'Together'].map((s) => (
           <button
             key={s}
             onClick={() => dispatch({ type: 'SET_SOURCE_FILTER', filter: s })}

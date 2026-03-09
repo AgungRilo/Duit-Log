@@ -281,7 +281,7 @@ export function ExpenseForm({
                 type="radio"
                 name="source"
                 value={s}
-                defaultChecked={s === (defaultSource ?? 'Danny')}
+                defaultChecked={s === (defaultSource ?? 'Agung')}
                 className="peer sr-only"
               />
               <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">

@@ -1,0 +1,16 @@
+{
+    "framework": "vite",
+    "build": {
+      "env": {
+        "NPM_FLAGS": "--legacy-peer-deps" 
+      }
+    },
+    "outputDirectory": "build",
+  
+    "rewrites": [
+      { 
+        "source": "/(.*)", 
+        "destination": "/index.html"
+      }
+    ]
+  }

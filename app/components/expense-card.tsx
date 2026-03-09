@@ -14,7 +14,8 @@ const categoryColors: Record<string, string> = {
 
 function sourceColor(source: string): string {
   if (source === 'Danny') return 'bg-blue-500 text-white';
-  if (source === 'Dewi') return 'bg-rose-500 text-white';
+  if (source === 'Agung') return 'bg-blue-500 text-white';
+  if (source === 'Ortu') return 'bg-rose-500 text-white';
   if (source === 'Together') return 'bg-indigo-500 text-white';
   return 'bg-slate-200 text-slate-700';
 }
