@@ -395,7 +395,7 @@ export default function Index() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col bg-white">
       <header className="px-4 flex justify-between items-center pt-[max(1.5rem,env(safe-area-inset-top))] pb-2 shrink-0">
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          DuitLog
+          Duit-Log
         </h1>
         <div className="mt-2">
           <MonthSelector
