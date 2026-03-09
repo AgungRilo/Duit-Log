@@ -1,16 +1,5 @@
 {
-    "framework": "vite",
-    "build": {
-      "env": {
-        "NPM_FLAGS": "--legacy-peer-deps" 
-      }
-    },
-    "outputDirectory": "dist",
-  
-    "rewrites": [
-      { 
-        "source": "/(.*)", 
-        "destination": "/index.html"
-      }
-    ]
+    "buildCommand": "npm run build",
+    "outputDirectory": "build/client",
+    "framework": null
   }
