@@ -1,15 +1,16 @@
 {
-    "buildCommand": "npm run build",
-    "outputDirectory": "build/client",
-    "functions": {
-      "api/index.ts": {
-        "runtime": "nodejs20.x"
+   
+    "build": {
+      "env": {
+        "NPM_FLAGS": "--legacy-peer-deps" 
       }
     },
-    "routes": [
-      {
-        "src": "/(.*)",
-        "dest": "/api/index.ts"
+    "outputDirectory": "dist",
+  
+    "rewrites": [
+      { 
+        "source": "/(.*)", 
+        "destination": "/index.html"
       }
     ]
   }
