@@ -193,7 +193,7 @@ export default function History() {
     sourceFilter === 'All'
       ? displayEntries
       : displayEntries.filter((e) => e.source === sourceFilter);
-
+  console.log('filtered', filtered)
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col bg-white">
       <header className="flex justify-between items-center shrink-0 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-2">
@@ -231,11 +231,10 @@ export default function History() {
           <button
             key={s}
             onClick={() => dispatch({ type: 'SET_SOURCE_FILTER', filter: s })}
-            className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
-              sourceFilter === s
+            className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${sourceFilter === s
                 ? 'bg-slate-900 text-white'
                 : 'bg-slate-100 text-slate-600'
-            }`}
+              }`}
           >
             {s}
           </button>
@@ -258,12 +257,20 @@ export default function History() {
         </div>
       ) : (
         <div className="flex flex-col gap-2 px-4 pt-2 pb-4">
-          {filtered.map((entry, i) => (
+          {/* {filtered.map((entry, i) => (
             <ExpenseCard
               key={`${entry.timestamp}-${i}`}
               entry={entry}
             />
-          ))}
+          ))} */}
+          {filtered
+            .filter((entry) => entry.timestamp !== "" && entry.item !== "") // Hanya ambil yang ada isinya
+            .map((entry, i) => (
+              <ExpenseCard
+                key={`${entry.timestamp}-${i}`}
+                entry={entry}
+              />
+            ))}
         </div>
       )}
     </main>

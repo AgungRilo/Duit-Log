@@ -355,7 +355,7 @@ export default function Index() {
         source: formData.get('source') as string,
       },
     };
-
+    console.log('expense',expense)
     try {
       await addPendingExpense(expense);
       await registerBackgroundSync();
