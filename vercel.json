@@ -5,7 +5,7 @@
         "NPM_FLAGS": "--legacy-peer-deps" 
       }
     },
-    "outputDirectory": "build",
+    "outputDirectory": "dist",
   
     "rewrites": [
       { 
