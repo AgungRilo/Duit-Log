@@ -55,8 +55,8 @@ flowchart LR
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/dannycahyo/duit-log.git
-cd duit-log
+git clone https://github.com/AgungRilo/Duit-Log.git
+cd Duit-Log
 
 # 2. Install dependencies
 npm install
