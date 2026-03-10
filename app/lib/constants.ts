@@ -12,7 +12,7 @@ export const CATEGORIES = [
 
 export const METHODS = ['Cash', 'Shopee Pay', 'JAGO'] as const;
 
-export const SOURCES = ['Agung', 'Ortu', 'Together'] as const;
+export const SOURCES = ['Agung', 'Family', 'Together'] as const;
 
 export type Category = (typeof CATEGORIES)[number];
 export type Method = (typeof METHODS)[number];
