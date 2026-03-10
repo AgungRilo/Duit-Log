@@ -10,7 +10,7 @@ export const CATEGORIES = [
   'Other'
 ] as const;
 
-export const METHODS = ['Cash', 'BCA Debit', 'QRIS', 'JAGO'] as const;
+export const METHODS = ['Cash', 'Shopee Pay', 'JAGO'] as const;
 
 export const SOURCES = ['Agung', 'Ortu', 'Together'] as const;
 
