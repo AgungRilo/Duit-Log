@@ -86,6 +86,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   await requireAuth(request);
   const formData = await request.formData();
+  console.log('formData',formData)
   const raw = {
     month: formData.get('month') as string,
     item: formData.get('item') as string,
@@ -132,10 +133,10 @@ export async function action({ request }: Route.ActionArgs) {
   const jakartaDate = new Date(
     now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }),
   );
-  const timestamp = `${jakartaDate.getMonth() + 1}/${jakartaDate.getDate()}/${jakartaDate.getFullYear()} ${String(jakartaDate.getHours()).padStart(2, '0')}:${String(jakartaDate.getMinutes()).padStart(2, '0')}:${String(jakartaDate.getSeconds()).padStart(2, '0')}`;
+  const timestamp = `${jakartaDate.getMonth() + 1}/${jakartaDate.getDate()}/${jakartaDate.getFullYear()} ${String(jakartaDate.getHours()).padStart(1, '0')}:${String(jakartaDate.getMinutes()).padStart(2, '0')}:${String(jakartaDate.getSeconds()).padStart(2, '0')}`;
 
   const [year, month, day] = parsed.date.split('-');
-  const formattedDate = `${Number(month)}/${Number(day)}/${year}`;
+  const formattedDate = `${Number(day)}/${Number(month)}/${year}`;
 
   const row = [
     timestamp, // Timestamp
