@@ -30,6 +30,15 @@ export function expenseSchema(master: MasterData) {
   });
 }
 
+/** Validates a new income entry; categories come from IncomeCategory rows */
+export function incomeSchema(master: MasterData) {
+  return baseSchema.extend({
+    category: oneOf(master.incomeCategories, 'Pick a category'),
+    method: oneOf(master.methods, 'Pick where it was received'),
+    source: oneOf(master.sources, 'Select who received it')
+  });
+}
+
 // Same as expenseSchema, but also accepts the row's current category/method/source
 // so entries using values no longer in the option lists can still be edited
 export function expenseEditSchema(

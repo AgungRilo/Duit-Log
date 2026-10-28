@@ -63,3 +63,12 @@ export function daysInMonth(month: string): number {
   const [y, m] = month.split('-').map(Number);
   return new Date(y, m, 0).getDate();
 }
+
+// "M/D/YYYY" sheet date -> "YYYY-MM", or null when unparseable
+export function monthOfSheetDate(date: string): string | null {
+  const parts = date.split('/');
+  if (parts.length !== 3) return null;
+  const [m, , y] = parts.map(Number);
+  if (!Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(y)) return null;
+  return `${y}-${String(m).padStart(2, '0')}`;
+}

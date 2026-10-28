@@ -1,10 +1,11 @@
-import { CATEGORIES, METHODS, SOURCES } from './constants';
+import { CATEGORIES, INCOME_CATEGORIES, METHODS, SOURCES } from './constants';
 
 /** Option lists managed from the spreadsheet's `Master` tab */
 export interface MasterData {
   categories: string[];
   methods: string[];
   sources: string[];
+  incomeCategories: string[];
   /** Monthly budget (IDR) per active category; categories without one are absent */
   budgets: Record<string, number>;
 }
@@ -15,17 +16,39 @@ export const FALLBACK_MASTER: MasterData = {
   categories: [...CATEGORIES],
   methods: [...METHODS],
   sources: [...SOURCES],
+  incomeCategories: [...INCOME_CATEGORIES],
   budgets: {}
 };
 
-type ListKey = 'categories' | 'methods' | 'sources';
-const LIST_KEYS: ListKey[] = ['categories', 'methods', 'sources'];
+type ListKey = 'categories' | 'methods' | 'sources' | 'incomeCategories';
+const LIST_KEYS: ListKey[] = ['categories', 'methods', 'sources', 'incomeCategories'];
 
 const TYPE_KEYS: Record<string, ListKey> = {
   category: 'categories',
   method: 'methods',
-  source: 'sources'
+  source: 'sources',
+  incomecategory: 'incomeCategories'
 };
+
+/** Whether any row (active or not) defines income categories */
+export function hasIncomeCategoryRows(rows: unknown[][]): boolean {
+  return rows
+    .slice(1)
+    .some(([type]) => String(type ?? '').trim().toLowerCase() === 'incomecategory');
+}
+
+/** 1-based sheet row just below the last row that has a Type */
+export function nextFreeRow(rows: unknown[][]): number {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i]?.[0] ?? '').trim()) return i + 2;
+  }
+  return 2;
+}
+
+/** Rows appended to an existing Master tab that predates income */
+export function defaultIncomeCategoryRows(): (string | boolean)[][] {
+  return FALLBACK_MASTER.incomeCategories.map((n) => ['IncomeCategory', n, true]);
+}
 
 const INACTIVE = new Set(['false', 'no', 'n', '0', 'tidak', 'off']);
 
@@ -52,6 +75,7 @@ export function parseMasterRows(rows: unknown[][]): MasterData {
     categories: [],
     methods: [],
     sources: [],
+    incomeCategories: [],
     budgets: {}
   };
   for (const [type, name, active, budget] of rows.slice(1)) {
@@ -74,6 +98,7 @@ export function defaultMasterRows(): (string | boolean)[][] {
     MASTER_HEADERS,
     ...FALLBACK_MASTER.categories.map((n) => ['Category', n, true]),
     ...FALLBACK_MASTER.methods.map((n) => ['Method', n, true]),
-    ...FALLBACK_MASTER.sources.map((n) => ['Source', n, true])
+    ...FALLBACK_MASTER.sources.map((n) => ['Source', n, true]),
+    ...defaultIncomeCategoryRows()
   ];
 }

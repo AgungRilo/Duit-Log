@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { expenseEditSchema, expenseSchema } from './validation';
+import { expenseEditSchema, expenseSchema, incomeSchema } from './validation';
 
 const master = {
   categories: ['Food', 'Coffee'],
   methods: ['Cash', 'BCA'],
   sources: ['Agung', 'Together'],
+  incomeCategories: ['Salary'],
   budgets: {}
 };
 
@@ -80,5 +81,13 @@ describe('expenseEditSchema', () => {
       category: ''
     }).safeParse({ ...valid, category: '' });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('incomeSchema', () => {
+  it('uses income categories, not expense ones', () => {
+    const schema = incomeSchema(master);
+    expect(schema.safeParse({ ...valid, category: 'Salary' }).success).toBe(true);
+    expect(schema.safeParse({ ...valid, category: 'Coffee' }).success).toBe(false);
   });
 });

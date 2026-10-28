@@ -183,7 +183,7 @@ function toEntry(row: unknown[], rowNumber: number): ExpenseEntry {
 }
 
 // Row 1 is the header, so data row i lives on sheet row i + 2
-function toEntries(values: unknown[][]): ExpenseEntry[] {
+export function toEntries(values: unknown[][]): ExpenseEntry[] {
   return values
     .slice(1)
     .map((row, i) => toEntry(row, i + 2))

@@ -28,6 +28,8 @@ interface ExpenseFormProps {
   prefill?: Omit<ExpenseFormValues, 'date'>;
   hiddenFields?: Record<string, string>;
   submitLabel?: string;
+  /** Income uses income categories and "received" wording */
+  kind?: 'expense' | 'income';
 }
 
 export interface ExpenseFormValues {
@@ -96,8 +98,11 @@ export function ExpenseForm({
   initial,
   prefill,
   hiddenFields,
-  submitLabel = 'Save Expense',
+  submitLabel,
+  kind = 'expense',
 }: ExpenseFormProps) {
+  const isIncome = kind === 'income';
+  const categories = isIncome ? options.incomeCategories : options.categories;
   const values = initial ?? prefill;
   const [state, dispatch] = useReducer(reducer, {
     date: initial ? fromDateString(initial.date) : new Date(),
@@ -159,6 +164,7 @@ export function ExpenseForm({
       {selectedMonth && (
         <input type="hidden" name="month" value={selectedMonth} />
       )}
+      <input type="hidden" name="kind" value={kind} />
       {Object.entries(hiddenFields ?? {}).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
@@ -203,7 +209,7 @@ export function ExpenseForm({
           type="text"
           name="item"
           defaultValue={values?.item}
-          placeholder="What did you buy?"
+          placeholder={isIncome ? 'Where is it from?' : 'What did you buy?'}
           maxLength={100}
           className="w-full rounded-lg border-2 border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-900"
         />
@@ -218,7 +224,7 @@ export function ExpenseForm({
           Category
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {withValue(options.categories, values?.category).map((c) => (
+          {withValue(categories, values?.category).map((c) => (
             <label key={c} className="cursor-pointer">
               <input
                 type="radio"
@@ -243,7 +249,7 @@ export function ExpenseForm({
       {/* Payment Method */}
       <fieldset>
         <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-          Payment Method
+          {isIncome ? 'Received in' : 'Payment Method'}
         </label>
         <div className="grid grid-cols-3 gap-2">
           {withValue(options.methods, values?.method).map((m) => (
@@ -322,7 +328,7 @@ export function ExpenseForm({
       {/* Source */}
       <fieldset>
         <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-          Paid from
+          {isIncome ? 'Received by' : 'Paid from'}
         </label>
         <div className="grid grid-cols-3 gap-2">
           {withValue(options.sources, values?.source).map((s) => (
@@ -380,7 +386,7 @@ export function ExpenseForm({
             Saving...
           </span>
         ) : isOnline ? (
-          submitLabel
+          (submitLabel ?? (isIncome ? 'Save Income' : 'Save Expense'))
         ) : (
           'Save Offline'
         )}

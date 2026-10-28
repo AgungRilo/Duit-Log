@@ -2,7 +2,10 @@ import { getSheetsClient } from './sheets.server';
 import { log } from './logger.server';
 import {
   FALLBACK_MASTER,
+  defaultIncomeCategoryRows,
   defaultMasterRows,
+  hasIncomeCategoryRows,
+  nextFreeRow,
   parseMasterRows,
   type MasterData
 } from './master';
@@ -13,6 +16,8 @@ const TTL_MS = 60 * 1000;
 const ERROR_TTL_MS = 15 * 1000;
 
 let cache: { data: MasterData; expires: number } | null = null;
+// Concurrent requests on a cold cache share one read (and any one-off writes)
+let inflight: Promise<MasterData> | null = null;
 
 /**
  * Creates the `Master` tab seeded with the built-in lists, with a checkbox
@@ -81,6 +86,33 @@ async function addBudgetHeader(): Promise<void> {
   }
 }
 
+/**
+ * Tabs created before income existed get the default income categories once.
+ * Writes right below the last row that has a Type, rather than appending:
+ * unticked checkboxes hold FALSE all the way down, which would make append
+ * land at row 1000+, and a fixed position means two instances racing here
+ * overwrite the same cells instead of adding duplicates.
+ */
+async function addIncomeCategoryRows(existing: unknown[][]): Promise<unknown[][]> {
+  const rows = defaultIncomeCategoryRows();
+  const start = nextFreeRow(existing);
+  try {
+    await getSheetsClient().spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
+      range: `'${MASTER_TAB}'!A${start}:C${start + rows.length - 1}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: rows }
+    });
+    log('info', 'sheets_master_income_rows_added', { rows: String(rows.length) });
+    return rows;
+  } catch (err) {
+    log('error', 'sheets_master_income_rows_error', {
+      error: (err as Error).message
+    });
+    return [];
+  }
+}
+
 async function readMasterRows(): Promise<unknown[][]> {
   const sheets = getSheetsClient();
   const read = () =>
@@ -92,6 +124,9 @@ async function readMasterRows(): Promise<unknown[][]> {
   try {
     const rows = (await read()).data.values ?? [];
     if (rows.length > 0 && !rows[0][3]) await addBudgetHeader();
+    if (rows.length > 0 && !hasIncomeCategoryRows(rows)) {
+      return [...rows, ...(await addIncomeCategoryRows(rows))];
+    }
     return rows;
   } catch (err) {
     // The tab doesn't exist yet
@@ -107,9 +142,15 @@ async function readMasterRows(): Promise<unknown[][]> {
  * defaults, so the form keeps working offline.
  */
 export async function getMasterData(): Promise<MasterData> {
-  const now = Date.now();
-  if (cache && cache.expires > now) return cache.data;
+  if (cache && cache.expires > Date.now()) return cache.data;
+  inflight ??= loadMasterData().finally(() => {
+    inflight = null;
+  });
+  return inflight;
+}
 
+async function loadMasterData(): Promise<MasterData> {
+  const now = Date.now();
   try {
     const data = parseMasterRows(await readMasterRows());
     cache = { data, expires: now + TTL_MS };

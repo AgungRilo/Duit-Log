@@ -11,6 +11,7 @@ const master = {
   categories: ['Utilities', 'Entertainment'],
   methods: ['JAGO', 'Cash'],
   sources: ['Agung', 'Together'],
+  incomeCategories: ['Salary'],
   budgets: {}
 };
 

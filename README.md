@@ -108,7 +108,7 @@ Follow these steps to configure Google Sheets as your datastore:
    | Method   | Cash   | ☑      |           |
    | Source   | Agung  | ☑      |           |
 
-   - `Type` is `Category`, `Method` or `Source`; rows show in sheet order.
+   - `Type` is `Category`, `Method`, `Source` or `IncomeCategory`; rows show in sheet order.
    - Untick `Active` to hide an option without breaking old entries that use it.
    - If a type has no active rows, the defaults in `app/lib/constants.ts` are used.
    - `Budget` (Category rows only) is the monthly limit in IDR. The dashboard shows progress per category (amber at 80%, red at 100%) and the app warns after a save that crosses it. Leave blank for no budget.
@@ -122,6 +122,8 @@ Follow these steps to configure Google Sheets as your datastore:
    - `Day` is the due day of the month (clamped to short months); overdue bills are flagged.
    - A bill counts as logged once the month has an expense with the same `Item` name (any amount), so variable bills can be tapped to adjust the amount first.
    - Category, Method and Source must match the `Master` tab, otherwise the bill shows what to fix.
+
+   Income is logged from the **Income** toggle on the Add page into a single `Income` tab (created on the first save) with the same columns as the month tabs. Its categories come from `IncomeCategory` rows in `Master`. The dashboard then shows a **Cash flow** card: income − spending = what's left, plus money in/out per method for the month.
 
 8. **Share the spreadsheet with the Service Account**
    Click **Share**, paste the `client_email` from step 5, and grant **Editor** access.

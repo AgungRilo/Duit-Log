@@ -1,7 +1,8 @@
 import { data } from "react-router";
 import type { Route } from "./+types/api.sync";
 import { requireAuth } from "~/lib/auth.server";
-import { expenseSchema } from "~/lib/validation";
+import { expenseSchema, incomeSchema } from "~/lib/validation";
+import { appendIncome } from "~/lib/income.server";
 import { appendExpense, ensureMonthSheet } from "~/lib/sheets.server";
 import { log } from "~/lib/logger.server";
 import { getMasterData } from "~/lib/master.server";
@@ -11,7 +12,9 @@ export async function action({ request }: Route.ActionArgs) {
   await requireAuth(request);
 
   const body = await request.json();
-  const result = expenseSchema(await getMasterData()).safeParse(body);
+  const isIncome = body.kind === "income";
+  const master = await getMasterData();
+  const result = (isIncome ? incomeSchema(master) : expenseSchema(master)).safeParse(body);
 
   if (!result.success) {
     return data({ success: false, error: "Validation failed" }, { status: 400 });
@@ -19,7 +22,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const parsed = result.data;
 
-  await ensureMonthSheet(parsed.month);
+  if (!isIncome) await ensureMonthSheet(parsed.month);
 
   // Use original submission time (createdAt) if available, otherwise use current time
   const createdAt = body.createdAt ? new Date(body.createdAt) : new Date();
@@ -39,8 +42,10 @@ export async function action({ request }: Route.ActionArgs) {
   ];
 
   try {
-    await appendExpense(parsed.month, row);
+    if (isIncome) await appendIncome(row);
+    else await appendExpense(parsed.month, row);
     log("info", "offline_expense_synced", {
+      kind: isIncome ? "income" : "expense",
       source: parsed.source,
       category: parsed.category,
       amount: String(parsed.amount),

@@ -101,6 +101,7 @@ describe('parseRepeat', () => {
     categories: ['Food'],
     methods: ['Cash'],
     sources: ['Agung'],
+    incomeCategories: ['Salary'],
     budgets: {}
   };
 

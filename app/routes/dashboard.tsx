@@ -15,6 +15,8 @@ import type { ExpenseEntry } from '~/lib/types';
 import { MonthSelector } from '~/components/month-selector';
 import { dayOfMonth, previousMonth } from '~/lib/dates';
 import { getMasterData } from '~/lib/master.server';
+import { getIncomeByMonth } from '~/lib/income.server';
+import { methodFlows, type MethodFlow } from '~/lib/cashflow';
 import {
   budgetLevel,
   budgetRows,
@@ -52,6 +54,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     return data({
       entries: [] as ExpenseEntry[],
       trend: [] as MonthSummary[],
+      income: [] as ExpenseEntry[],
       prevMonth: null as string | null,
       activeMonth,
       months,
@@ -65,9 +68,14 @@ export async function loader({ request }: Route.LoaderArgs) {
   const monthsToRead = trendMonths(months, activeMonth);
 
   try {
-    const byMonth = await getExpensesByMonths(monthsToRead);
+    const [byMonth, income] = await Promise.all([
+      getExpensesByMonths(monthsToRead),
+      // Income is optional; a failure shouldn't hide the expense dashboard
+      getIncomeByMonth(activeMonth).catch(() => [] as ExpenseEntry[]),
+    ]);
     return data({
       entries: byMonth[activeMonth] ?? [],
+      income,
       // Older months only need totals, which keeps the payload small
       trend: monthsToRead.map((m) => summarizeMonth(m, byMonth[m] ?? [])),
       prevMonth: monthsToRead.includes(prev) ? prev : null,
@@ -79,6 +87,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     return data({
       entries: [] as ExpenseEntry[],
       trend: [] as MonthSummary[],
+      income: [] as ExpenseEntry[],
       prevMonth: null as string | null,
       activeMonth,
       months,
@@ -346,14 +355,91 @@ function CategoryTrendList({
   );
 }
 
+function CashFlow({
+  income,
+  spent,
+  flows,
+}: {
+  income: number;
+  spent: number;
+  flows: MethodFlow[];
+}) {
+  const net = income - spent;
+  const signed = (n: number) => `${n < 0 ? '−' : n > 0 ? '+' : ''}${formatCompact(Math.abs(n))}`;
+  return (
+    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+      <h2 className="mb-3 text-sm font-semibold text-slate-900">Cash flow</h2>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <p className="text-[10px] text-slate-500">Income</p>
+          <p className="text-sm font-semibold text-emerald-600">
+            {formatCompact(income)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-500">Spent</p>
+          <p className="text-sm font-semibold text-slate-900">
+            {formatCompact(spent)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-500">Left</p>
+          <p
+            className={`text-sm font-semibold ${net < 0 ? 'text-red-600' : 'text-emerald-600'}`}
+          >
+            {signed(net)}
+          </p>
+        </div>
+      </div>
+      {flows.length > 0 && (
+        <table className="mt-4 w-full text-xs">
+          <thead>
+            <tr className="text-[10px] text-slate-400">
+              <th className="pb-1 text-left font-medium">Method</th>
+              <th className="pb-1 text-right font-medium">In</th>
+              <th className="pb-1 text-right font-medium">Out</th>
+              <th className="pb-1 text-right font-medium">Net</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {flows.map((f) => (
+              <tr key={f.method}>
+                <td className="truncate py-1.5 font-medium text-slate-700">
+                  {f.method}
+                </td>
+                <td className="py-1.5 text-right text-slate-500">
+                  {f.in ? formatCompact(f.in) : '—'}
+                </td>
+                <td className="py-1.5 text-right text-slate-500">
+                  {f.out ? formatCompact(f.out) : '—'}
+                </td>
+                <td
+                  className={`py-1.5 text-right font-semibold ${f.net < 0 ? 'text-red-600' : 'text-emerald-600'}`}
+                >
+                  {signed(f.net)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="mt-2 text-[10px] text-slate-400">
+        Money in and out this month, not account balances.
+      </p>
+    </section>
+  );
+}
+
 function BreakdownList({
   title,
   rows,
   total,
+  barClass = 'bg-blue-500',
 }: {
   title: string;
   rows: [string, number][];
   total: number;
+  barClass?: string;
 }) {
   const max = rows[0]?.[1] ?? 0;
   return (
@@ -375,7 +461,7 @@ function BreakdownList({
             </div>
             <div className="h-2 w-full rounded-full bg-slate-100">
               <div
-                className="h-2 rounded-full bg-blue-500"
+                className={`h-2 rounded-full ${barClass}`}
                 style={{ width: `${max > 0 ? (amount / max) * 100 : 0}%` }}
               />
             </div>
@@ -464,11 +550,18 @@ export default function Dashboard() {
   const { activeMonth, months, prevMonth } = loaderData;
   const entries = loaderData.entries as ExpenseEntry[];
   const trend = loaderData.trend as MonthSummary[];
+  const income = loaderData.income as ExpenseEntry[];
   const budgets = loaderData.budgets as Record<string, number>;
   const navigate = useNavigate();
   const [sourceFilter, setSourceFilter] = useState('All');
 
-  const sources = ['All', ...trendSources(trend)];
+  const sources = [
+    'All',
+    ...new Set([
+      ...trendSources(trend),
+      ...sumBy(income, 'source').map(([s]) => s),
+    ]),
+  ];
   const bySource = (list: ExpenseEntry[]) =>
     sourceFilter === 'All'
       ? list
@@ -476,6 +569,8 @@ export default function Dashboard() {
   const filtered = bySource(entries);
 
   const total = filtered.reduce((s, e) => s + e.amount, 0);
+  const incomeFiltered = bySource(income);
+  const incomeTotal = incomeFiltered.reduce((s, e) => s + e.amount, 0);
   const prevSummary = trend.find((t) => t.month === prevMonth);
   const prevTotal = prevSummary ? monthTotal(prevSummary, sourceFilter) : 0;
 
@@ -554,7 +649,7 @@ export default function Dashboard() {
 
       {error && <p className="px-4 pt-3 text-sm text-red-600">{error}</p>}
 
-      {!isOffline && !error && filtered.length === 0 ? (
+      {!isOffline && !error && filtered.length === 0 && incomeFiltered.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
           <span className="text-5xl">📊</span>
           <p className="text-lg font-semibold text-slate-700">
@@ -640,6 +735,14 @@ export default function Dashboard() {
               </div>
             </section>
 
+            {incomeFiltered.length > 0 && (
+              <CashFlow
+                income={incomeTotal}
+                spent={total}
+                flows={methodFlows(filtered, incomeFiltered)}
+              />
+            )}
+
             {budgetList.length > 0 && <BudgetList rows={budgetList} />}
 
             <DailyChart month={activeMonth} daily={daily} />
@@ -676,6 +779,14 @@ export default function Dashboard() {
               rows={sumBy(filtered, 'method')}
               total={total}
             />
+            {incomeFiltered.length > 0 && (
+              <BreakdownList
+                title="Income by category"
+                rows={sumBy(incomeFiltered, 'category')}
+                total={incomeTotal}
+                barClass="bg-emerald-500"
+              />
+            )}
 
             <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold text-slate-900">

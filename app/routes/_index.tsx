@@ -14,7 +14,8 @@ import {
   appendExpense,
   ensureMonthSheet,
 } from '~/lib/sheets.server';
-import { expenseSchema } from '~/lib/validation';
+import { expenseSchema, incomeSchema } from '~/lib/validation';
+import { appendIncome } from '~/lib/income.server';
 import { getMasterData } from '~/lib/master.server';
 import { jakartaTimestamp } from '~/lib/dates';
 import { parseRepeat } from '~/lib/filters';
@@ -82,6 +83,8 @@ function formatMonthLabel(month: string): string {
   }).format(date);
 }
 
+type Kind = 'expense' | 'income';
+
 type ActionData =
   | {
       success: true;
@@ -93,6 +96,7 @@ type ActionData =
         date: string;
         source: string;
         month: string;
+        kind: Kind;
       };
     }
   | { success: false; errors: Record<string, string> }
@@ -108,6 +112,7 @@ type ActionData =
         category: string;
         method: string;
         source: string;
+        kind: Kind;
       };
     };
 
@@ -148,7 +153,11 @@ export async function action({ request }: Route.ActionArgs) {
     source: formData.get('source') as string,
   };
 
-  const result = expenseSchema(await getMasterData()).safeParse(raw);
+  const kind: Kind = formData.get('kind') === 'income' ? 'income' : 'expense';
+  const master = await getMasterData();
+  const result = (
+    kind === 'income' ? incomeSchema(master) : expenseSchema(master)
+  ).safeParse(raw);
 
   if (!result.success) {
     const fieldErrors: Record<string, string> = {};
@@ -164,11 +173,14 @@ export async function action({ request }: Route.ActionArgs) {
   const parsed = result.data;
 
   // Create the target month tab if missing (skip when offline — appendExpense will fail gracefully)
-  try {
-    await ensureMonthSheet(parsed.month);
-  } catch (err) {
-    if (!isNetworkError(err)) throw err;
-    // Offline — skip verification and let appendExpense attempt (and fail) below
+  // Income lives in its own tab, which appendIncome creates when needed
+  if (kind === 'expense') {
+    try {
+      await ensureMonthSheet(parsed.month);
+    } catch (err) {
+      if (!isNetworkError(err)) throw err;
+      // Offline — skip verification and let appendExpense attempt (and fail) below
+    }
   }
 
   const timestamp = jakartaTimestamp();
@@ -187,7 +199,8 @@ export async function action({ request }: Route.ActionArgs) {
   ];
 
   try {
-    await appendExpense(parsed.month, row);
+    if (kind === 'income') await appendIncome(row);
+    else await appendExpense(parsed.month, row);
     const headers = new Headers();
     headers.append(
       'Set-Cookie',
@@ -208,6 +221,7 @@ export async function action({ request }: Route.ActionArgs) {
           date: parsed.date,
           source: parsed.source,
           month: parsed.month,
+          kind,
         },
       },
       { headers },
@@ -225,6 +239,7 @@ export async function action({ request }: Route.ActionArgs) {
           category: parsed.category,
           method: parsed.method,
           source: parsed.source,
+          kind,
         },
       });
     }
@@ -264,6 +279,7 @@ export default function Index() {
       return;
     }
     if (repeat) {
+      setKind('expense');
       setPrefill(repeat);
       setFormKey((k) => k + 1);
     }
@@ -275,6 +291,14 @@ export default function Index() {
     if (location.search) navigate('/', { replace: true });
   }
   const [formKey, setFormKey] = useState(0);
+  const [kind, setKind] = useState<Kind>('expense');
+
+  function switchKind(next: Kind) {
+    if (next === kind) return;
+    setKind(next);
+    clearPrefill();
+    setFormKey((k) => k + 1);
+  }
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -360,9 +384,11 @@ export default function Index() {
     if (!actionData) return;
 
     if (actionData.success) {
-      const monthLabel = formatMonthLabel(actionData.entry.month);
+      const { entry } = actionData;
       toast.success(
-        `Saved to ${monthLabel}: ${actionData.entry.item} — IDR ${actionData.entry.amount.toLocaleString()}`,
+        entry.kind === 'income'
+          ? `Income saved: ${entry.item} — IDR ${entry.amount.toLocaleString()}`
+          : `Saved to ${formatMonthLabel(entry.month)}: ${entry.item} — IDR ${entry.amount.toLocaleString()}`,
       );
       if (
         typeof navigator !== 'undefined' &&
@@ -370,7 +396,7 @@ export default function Index() {
       ) {
         navigator.vibrate(50);
       }
-      if (master.budgets[actionData.entry.category]) {
+      if (entry.kind === 'expense' && master.budgets[entry.category]) {
         checkBudget(actionData.entry);
       }
       clearPrefill();
@@ -418,6 +444,7 @@ export default function Index() {
         category: formData.get('category') as string,
         method: formData.get('method') as string,
         source: formData.get('source') as string,
+        kind: (formData.get('kind') as string) || 'expense',
       },
     };
     try {
@@ -491,7 +518,27 @@ export default function Index() {
         </div>
       )}
 
-      <RecurringBills month={selectedMonth} refreshKey={formKey} />
+      <div className="mx-4 mb-2 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+        {(['expense', 'income'] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => switchKind(k)}
+            aria-pressed={kind === k}
+            className={`rounded-md py-1.5 text-xs font-semibold transition-colors ${
+              kind === k
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500'
+            }`}
+          >
+            {k === 'expense' ? 'Expense' : 'Income'}
+          </button>
+        ))}
+      </div>
+
+      {kind === 'expense' && (
+        <RecurringBills month={selectedMonth} refreshKey={formKey} />
+      )}
 
       {prefill && (
         <div className="mx-4 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -514,6 +561,7 @@ export default function Index() {
 
       <ExpenseForm
         key={formKey}
+        kind={kind}
         prefill={prefill}
         errors={errors}
         isSubmitting={isSubmitting}

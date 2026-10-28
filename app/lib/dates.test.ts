@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dayOfMonth,
   jakartaTimestamp,
+  monthOfSheetDate,
   previousMonth,
   serialToString,
   toIsoDate
@@ -79,5 +80,18 @@ describe('jakartaTimestamp', () => {
     expect(jakartaTimestamp(new Date('2026-10-28T17:00:00Z'))).toBe(
       '2026-10-29 00:00:00'
     );
+  });
+});
+
+describe('monthOfSheetDate', () => {
+  it('reads the month from M/D/YYYY', () => {
+    expect(monthOfSheetDate('3/7/2026')).toBe('2026-03');
+    expect(monthOfSheetDate('12/31/2025')).toBe('2025-12');
+  });
+
+  it('returns null for unparseable dates', () => {
+    expect(monthOfSheetDate('')).toBeNull();
+    expect(monthOfSheetDate('2026-03-07')).toBeNull();
+    expect(monthOfSheetDate('13/1/2026')).toBeNull();
   });
 });

@@ -3,6 +3,8 @@ import {
   FALLBACK_MASTER,
   MASTER_HEADERS,
   defaultMasterRows,
+  hasIncomeCategoryRows,
+  nextFreeRow,
   parseBudget,
   parseMasterRows
 } from './master';
@@ -22,8 +24,26 @@ describe('parseMasterRows', () => {
       categories: ['Food', 'Coffee'],
       methods: ['Cash'],
       sources: ['Agung'],
+      incomeCategories: FALLBACK_MASTER.incomeCategories,
       budgets: {}
     });
+  });
+
+  it('reads income categories separately from expense categories', () => {
+    const result = parseMasterRows([
+      header,
+      ['IncomeCategory', 'Gaji', true],
+      ['incomecategory', 'Freelance', true],
+      ['IncomeCategory', 'Old', false],
+      ['Category', 'Food', true]
+    ]);
+    expect(result.incomeCategories).toEqual(['Gaji', 'Freelance']);
+    expect(result.categories).toEqual(['Food']);
+  });
+
+  it('detects whether income rows exist, even inactive ones', () => {
+    expect(hasIncomeCategoryRows([header, ['Category', 'Food', true]])).toBe(false);
+    expect(hasIncomeCategoryRows([header, ['IncomeCategory', 'X', false]])).toBe(true);
   });
 
   it('reads budgets for active categories only', () => {
@@ -102,5 +122,23 @@ describe('parseBudget', () => {
     expect(parseBudget(undefined)).toBe(0);
     expect(parseBudget(0)).toBe(0);
     expect(parseBudget(-10)).toBe(0);
+  });
+});
+
+describe('nextFreeRow', () => {
+  it('skips trailing rows that only hold unticked checkboxes', () => {
+    const rows = [
+      header,
+      ['Category', 'Food', true],
+      ['Source', 'Agung', true],
+      ['', '', false],
+      ['', '', 'FALSE']
+    ];
+    expect(nextFreeRow(rows)).toBe(4);
+  });
+
+  it('starts below the header of an empty tab', () => {
+    expect(nextFreeRow([header])).toBe(2);
+    expect(nextFreeRow([])).toBe(2);
   });
 });

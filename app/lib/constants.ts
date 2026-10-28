@@ -14,6 +14,8 @@ export const METHODS = ['Cash', 'Shopee Pay', 'JAGO'] as const;
 
 export const SOURCES = ['Agung', 'Family', 'Together'] as const;
 
+export const INCOME_CATEGORIES = ['Salary', 'Bonus', 'Transfer', 'Refund', 'Other'] as const;
+
 export type Category = (typeof CATEGORIES)[number];
 export type Method = (typeof METHODS)[number];
 export type Source = (typeof SOURCES)[number];
