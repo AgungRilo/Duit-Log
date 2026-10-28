@@ -10,7 +10,7 @@ import {
 import type { Route } from './+types/_index';
 import {
   appendExpense,
-  getAvailableMonths,
+  ensureMonthSheet,
 } from '~/lib/sheets.server';
 import { expenseSchema } from '~/lib/validation';
 import { ExpenseForm } from '~/components/expense-form';
@@ -86,7 +86,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   await requireAuth(request);
   const formData = await request.formData();
-  console.log('formData',formData)
   const raw = {
     month: formData.get('month') as string,
     item: formData.get('item') as string,
@@ -112,18 +111,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const parsed = result.data;
 
-  // Verify the target month tab exists (skip when offline — appendExpense will fail gracefully)
+  // Create the target month tab if missing (skip when offline — appendExpense will fail gracefully)
   try {
-    const availableMonths = await getAvailableMonths();
-    if (!availableMonths.includes(parsed.month)) {
-      return data({
-        success: false as const,
-        error:
-          "Sheet tab '" +
-          parsed.month +
-          "' not found. Please create it in the spreadsheet.",
-      });
-    }
+    await ensureMonthSheet(parsed.month);
   } catch (err) {
     if (!isNetworkError(err)) throw err;
     // Offline — skip verification and let appendExpense attempt (and fail) below
@@ -133,10 +123,10 @@ export async function action({ request }: Route.ActionArgs) {
   const jakartaDate = new Date(
     now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }),
   );
-  const timestamp = `${jakartaDate.getMonth() + 1}/${jakartaDate.getDate()}/${jakartaDate.getFullYear()} ${String(jakartaDate.getHours()).padStart(1, '0')}:${String(jakartaDate.getMinutes()).padStart(2, '0')}:${String(jakartaDate.getSeconds()).padStart(2, '0')}`;
+  const timestamp = `${jakartaDate.getFullYear()}-${String(jakartaDate.getMonth() + 1).padStart(2, '0')}-${String(jakartaDate.getDate()).padStart(2, '0')} ${String(jakartaDate.getHours()).padStart(2, '0')}:${String(jakartaDate.getMinutes()).padStart(2, '0')}:${String(jakartaDate.getSeconds()).padStart(2, '0')}`;
 
-  const [year, month, day] = parsed.date.split('-');
-  const formattedDate = `${Number(day)}/${Number(month)}/${year}`;
+  // ISO format so Sheets parses it correctly regardless of spreadsheet locale
+  const formattedDate = parsed.date;
 
   const row = [
     timestamp, // Timestamp

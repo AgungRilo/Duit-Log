@@ -1,4 +1,4 @@
-import { getAvailableMonths } from './sheets.server';
+import { ensureMonthSheet, getAvailableMonths } from './sheets.server';
 
 export function isNetworkError(err: unknown): boolean {
   if (err instanceof Error) {
@@ -56,6 +56,28 @@ export async function resolveActiveMonth(
     return { months: fallback, activeMonth, offline: true };
   }
 
+  // Current calendar month (in Asia/Jakarta timezone)
+  const jakartaFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit'
+  });
+  const jakartaParts = jakartaFormatter.formatToParts(new Date());
+  const jakartaYear = jakartaParts.find((p) => p.type === 'year')?.value;
+  const jakartaMonth = jakartaParts.find((p) => p.type === 'month')?.value;
+  const currentMonth =
+    jakartaYear && jakartaMonth ? `${jakartaYear}-${jakartaMonth}` : months[0];
+
+  // A new month started — create its tab automatically
+  if (currentMonth && !months.includes(currentMonth)) {
+    try {
+      await ensureMonthSheet(currentMonth);
+      months = [currentMonth, ...months].sort().reverse();
+    } catch (err) {
+      if (!isNetworkError(err) && months.length === 0) throw err;
+    }
+  }
+
   if (months.length === 0) {
     throw new Error(
       'No monthly sheet tabs found. Create a tab named YYYY-MM (e.g., 2025-07) in the spreadsheet.'
@@ -67,17 +89,7 @@ export async function resolveActiveMonth(
     return { months, activeMonth: cookieMonth };
   }
 
-  // Priority 2: current calendar month (in Asia/Jakarta timezone)
-  const jakartaFormatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit'
-  });
-  const jakartaParts = jakartaFormatter.formatToParts(new Date());
-  const jakartaYear = jakartaParts.find((p) => p.type === 'year')?.value;
-  const jakartaMonth = jakartaParts.find((p) => p.type === 'month')?.value;
-  const currentMonth =
-    jakartaYear && jakartaMonth ? `${jakartaYear}-${jakartaMonth}` : months[0];
+  // Priority 2: current calendar month
   if (months.includes(currentMonth)) {
     return { months, activeMonth: currentMonth };
   }

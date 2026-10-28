@@ -1,7 +1,7 @@
 import React, { useReducer, type RefObject } from 'react';
 import { toast } from 'sonner';
 import { Form } from 'react-router';
-import { endOfMonth, format } from 'date-fns';
+import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { CATEGORIES, METHODS, SOURCES } from '~/lib/constants';
 import { Calendar } from '~/components/ui/calendar';
@@ -20,6 +20,30 @@ interface ExpenseFormProps {
   defaultSource?: string;
   isOnline?: boolean;
   onOfflineSubmit?: (formData: FormData) => Promise<void>;
+  /** Pre-fills the form for editing an existing expense */
+  initial?: ExpenseFormValues;
+  hiddenFields?: Record<string, string>;
+  submitLabel?: string;
+}
+
+export interface ExpenseFormValues {
+  amount: number;
+  item: string;
+  category: string;
+  method: string;
+  /** YYYY-MM-DD */
+  date: string;
+  source: string;
+}
+
+// Keeps a value that's no longer in the option list (e.g. old sheet data) selectable
+function withValue(options: readonly string[], value?: string): string[] {
+  return value && !options.includes(value) ? [...options, value] : [...options];
+}
+
+function fromDateString(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function toDateString(d: Date) {
@@ -64,16 +88,24 @@ export function ExpenseForm({
   defaultSource,
   isOnline = true,
   onOfflineSubmit,
+  initial,
+  hiddenFields,
+  submitLabel = 'Save Expense',
 }: ExpenseFormProps) {
   const [state, dispatch] = useReducer(reducer, {
-    date: new Date(),
+    date: initial ? fromDateString(initial.date) : new Date(),
     calendarOpen: false,
-    amount: '',
+    amount: initial ? formatAmount(String(initial.amount)) : '',
   });
 
   const maxDate = selectedMonth
     ? endOfMonth(new Date(selectedMonth + '-01'))
     : undefined;
+  // An edited row stays in its month's tab, so keep the date within that month
+  const minDate =
+    initial && selectedMonth
+      ? startOfMonth(new Date(selectedMonth + '-01'))
+      : undefined;
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     if (isOnline) return; // Let RR7 handle it normally
@@ -120,6 +152,9 @@ export function ExpenseForm({
       {selectedMonth && (
         <input type="hidden" name="month" value={selectedMonth} />
       )}
+      {Object.entries(hiddenFields ?? {}).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       {/* Amount */}
       <fieldset>
         <div className="flex items-center gap-2 rounded-xl border-2 border-slate-200 px-4 py-3 focus-within:border-slate-900">
@@ -136,7 +171,7 @@ export function ExpenseForm({
             type="text"
             inputMode="decimal"
             placeholder="0"
-            autoFocus
+            autoFocus={!initial}
             value={state.amount}
             onChange={(e) =>
               dispatch({
@@ -160,6 +195,7 @@ export function ExpenseForm({
         <input
           type="text"
           name="item"
+          defaultValue={initial?.item}
           placeholder="What did you buy?"
           maxLength={100}
           className="w-full rounded-lg border-2 border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-900"
@@ -175,12 +211,13 @@ export function ExpenseForm({
           Category
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {CATEGORIES.map((c) => (
+          {withValue(CATEGORIES, initial?.category).map((c) => (
             <label key={c} className="cursor-pointer">
               <input
                 type="radio"
                 name="category"
                 value={c}
+                defaultChecked={c === initial?.category}
                 className="peer sr-only"
               />
               <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
@@ -202,12 +239,13 @@ export function ExpenseForm({
           Payment Method
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {METHODS.map((m) => (
+          {withValue(METHODS, initial?.method).map((m) => (
             <label key={m} className="cursor-pointer">
               <input
                 type="radio"
                 name="method"
                 value={m}
+                defaultChecked={m === initial?.method}
                 className="peer sr-only"
               />
               <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
@@ -258,7 +296,12 @@ export function ExpenseForm({
               onSelect={(d) =>
                 d && dispatch({ type: 'select_date', date: d })
               }
-              disabled={maxDate ? (d) => d > maxDate : undefined}
+              disabled={
+                maxDate
+                  ? (d) => d > maxDate || (minDate !== undefined && d < minDate)
+                  : undefined
+              }
+              startMonth={minDate}
               endMonth={maxDate}
               initialFocus
             />
@@ -275,13 +318,15 @@ export function ExpenseForm({
           Paid from
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {SOURCES.map((s) => (
+          {withValue(SOURCES, initial?.source).map((s) => (
             <label key={s} className="cursor-pointer">
               <input
                 type="radio"
                 name="source"
                 value={s}
-                defaultChecked={s === (defaultSource ?? 'Agung')}
+                defaultChecked={
+                  s === (initial?.source ?? defaultSource ?? 'Agung')
+                }
                 className="peer sr-only"
               />
               <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
@@ -325,7 +370,7 @@ export function ExpenseForm({
             Saving...
           </span>
         ) : isOnline ? (
-          'Save Expense'
+          submitLabel
         ) : (
           'Save Offline'
         )}

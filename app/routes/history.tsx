@@ -1,6 +1,7 @@
 import { useReducer, useEffect, useCallback } from 'react';
 import {
   data,
+  Link,
   useLoaderData,
   useNavigate,
   useRouteError,
@@ -12,6 +13,7 @@ import { requireAuth } from '~/lib/auth.server';
 import { resolveActiveMonth } from '~/lib/month.server';
 import { selectedMonthCookie } from '~/lib/cookies.server';
 import type { ExpenseEntry } from '~/lib/types';
+import { SOURCES } from '~/lib/constants';
 import { ExpenseCard } from '~/components/expense-card';
 import { MonthSelector } from '~/components/month-selector';
 import { getPendingCount } from '~/lib/offline-queue';
@@ -42,16 +44,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   try {
     const LIMIT = 20;
-    const rows = await getExpensesByMonth(activeMonth, LIMIT);
-    const entries: ExpenseEntry[] = rows.map((row) => ({
-      timestamp: row[0] ?? '',
-      item: row[1] ?? '',
-      category: row[2] ?? '',
-      amount: Number(row[3]) || 0,
-      method: row[4] ?? '',
-      date: row[5] ?? '',
-      source: row[6] ?? '',
-    }));
+    const entries = await getExpensesByMonth(activeMonth, LIMIT);
     return data({ entries, activeMonth, months });
   } catch {
     return data({
@@ -193,7 +186,6 @@ export default function History() {
     sourceFilter === 'All'
       ? displayEntries
       : displayEntries.filter((e) => e.source === sourceFilter);
-  console.log('filtered', filtered)
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col bg-white">
       <header className="flex justify-between items-center shrink-0 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-2">
@@ -227,7 +219,7 @@ export default function History() {
       )}
 
       <div className="grid grid-cols-4 gap-1 px-4 pb-2">
-        {['All', 'Agung', 'Ortu', 'Together'].map((s) => (
+        {['All', ...SOURCES].map((s) => (
           <button
             key={s}
             onClick={() => dispatch({ type: 'SET_SOURCE_FILTER', filter: s })}
@@ -257,20 +249,21 @@ export default function History() {
         </div>
       ) : (
         <div className="flex flex-col gap-2 px-4 pt-2 pb-4">
-          {/* {filtered.map((entry, i) => (
-            <ExpenseCard
-              key={`${entry.timestamp}-${i}`}
-              entry={entry}
-            />
-          ))} */}
           {filtered
             .filter((entry) => entry.timestamp !== "" && entry.item !== "") // Hanya ambil yang ada isinya
-            .map((entry, i) => (
-              <ExpenseCard
-                key={`${entry.timestamp}-${i}`}
-                entry={entry}
-              />
-            ))}
+            .map((entry, i) =>
+              entry.row && !isOffline ? (
+                <Link
+                  key={`${entry.timestamp}-${i}`}
+                  to={`/edit?month=${activeMonth}&row=${entry.row}`}
+                  aria-label={`Edit ${entry.item}`}
+                >
+                  <ExpenseCard entry={entry} />
+                </Link>
+              ) : (
+                <ExpenseCard key={`${entry.timestamp}-${i}`} entry={entry} />
+              ),
+            )}
         </div>
       )}
     </main>

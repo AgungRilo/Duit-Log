@@ -178,6 +178,32 @@ export default function App() {
             )}
           </NavLink>
           <NavLink
+            to="/dashboard"
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-0.5 px-4 py-2 text-xs ${isActive ? 'font-bold text-slate-900' : 'text-slate-400'}`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={isActive ? 2.5 : 2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+                <span>Dashboard</span>
+              </>
+            )}
+          </NavLink>
+          <NavLink
             to="/history"
             className={({ isActive }) =>
               `flex flex-col items-center gap-0.5 px-4 py-2 text-xs ${isActive ? 'font-bold text-slate-900' : 'text-slate-400'}`

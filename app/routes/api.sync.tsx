@@ -2,7 +2,7 @@ import { data } from "react-router";
 import type { Route } from "./+types/api.sync";
 import { requireAuth } from "~/lib/auth.server";
 import { expenseSchema } from "~/lib/validation";
-import { appendExpense, getAvailableMonths } from "~/lib/sheets.server";
+import { appendExpense, ensureMonthSheet } from "~/lib/sheets.server";
 import { log } from "~/lib/logger.server";
 
 export async function action({ request }: Route.ActionArgs) {
@@ -17,23 +17,17 @@ export async function action({ request }: Route.ActionArgs) {
 
   const parsed = result.data;
 
-  const months = await getAvailableMonths();
-  if (!months.includes(parsed.month)) {
-    return data(
-      { success: false, error: `Sheet tab '${parsed.month}' not found` },
-      { status: 400 }
-    );
-  }
+  await ensureMonthSheet(parsed.month);
 
   // Use original submission time (createdAt) if available, otherwise use current time
   const createdAt = body.createdAt ? new Date(body.createdAt) : new Date();
   const jakartaDate = new Date(
     createdAt.toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
   );
-  const timestamp = `${jakartaDate.getMonth() + 1}/${jakartaDate.getDate()}/${jakartaDate.getFullYear()} ${String(jakartaDate.getHours()).padStart(2, "0")}:${String(jakartaDate.getMinutes()).padStart(2, "0")}:${String(jakartaDate.getSeconds()).padStart(2, "0")}`;
+  const timestamp = `${jakartaDate.getFullYear()}-${String(jakartaDate.getMonth() + 1).padStart(2, "0")}-${String(jakartaDate.getDate()).padStart(2, "0")} ${String(jakartaDate.getHours()).padStart(2, "0")}:${String(jakartaDate.getMinutes()).padStart(2, "0")}:${String(jakartaDate.getSeconds()).padStart(2, "0")}`;
 
-  const [year, month, day] = parsed.date.split("-");
-  const formattedDate = `${Number(month)}/${Number(day)}/${year}`;
+  // ISO format so Sheets parses it correctly regardless of spreadsheet locale
+  const formattedDate = parsed.date;
 
   const row = [
     timestamp,
