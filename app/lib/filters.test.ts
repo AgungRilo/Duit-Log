@@ -100,7 +100,8 @@ describe('parseRepeat', () => {
   const master = {
     categories: ['Food'],
     methods: ['Cash'],
-    sources: ['Agung']
+    sources: ['Agung'],
+    budgets: {}
   };
 
   it('round-trips an entry through repeatSearch', () => {

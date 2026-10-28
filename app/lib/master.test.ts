@@ -3,6 +3,7 @@ import {
   FALLBACK_MASTER,
   MASTER_HEADERS,
   defaultMasterRows,
+  parseBudget,
   parseMasterRows
 } from './master';
 
@@ -20,8 +21,21 @@ describe('parseMasterRows', () => {
     expect(result).toEqual({
       categories: ['Food', 'Coffee'],
       methods: ['Cash'],
-      sources: ['Agung']
+      sources: ['Agung'],
+      budgets: {}
     });
+  });
+
+  it('reads budgets for active categories only', () => {
+    const result = parseMasterRows([
+      header,
+      ['Category', 'Food', true, 1500000],
+      ['Category', 'Fun', true, '500.000'],
+      ['Category', 'Health', true, ''],
+      ['Category', 'Old', false, 900000],
+      ['Method', 'Cash', true, 100]
+    ]);
+    expect(result.budgets).toEqual({ Food: 1500000, Fun: 500000 });
   });
 
   it('skips inactive rows, treating blank Active as active', () => {
@@ -73,5 +87,20 @@ describe('parseMasterRows', () => {
 describe('defaultMasterRows', () => {
   it('round-trips to the fallback lists', () => {
     expect(parseMasterRows(defaultMasterRows())).toEqual(FALLBACK_MASTER);
+  });
+});
+
+describe('parseBudget', () => {
+  it('accepts numbers and formatted text', () => {
+    expect(parseBudget(1500000)).toBe(1500000);
+    expect(parseBudget('1.500.000')).toBe(1500000);
+    expect(parseBudget('IDR 1,500,000')).toBe(1500000);
+  });
+
+  it('returns 0 for blank or non-positive values', () => {
+    expect(parseBudget('')).toBe(0);
+    expect(parseBudget(undefined)).toBe(0);
+    expect(parseBudget(0)).toBe(0);
+    expect(parseBudget(-10)).toBe(0);
   });
 });

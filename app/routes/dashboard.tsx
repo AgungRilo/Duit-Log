@@ -14,6 +14,14 @@ import { selectedMonthCookie } from '~/lib/cookies.server';
 import type { ExpenseEntry } from '~/lib/types';
 import { MonthSelector } from '~/components/month-selector';
 import { dayOfMonth, previousMonth } from '~/lib/dates';
+import { getMasterData } from '~/lib/master.server';
+import {
+  budgetLevel,
+  budgetRows,
+  projectMonthTotal,
+  type BudgetLevel,
+  type BudgetRow,
+} from '~/lib/budget';
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAuth(request);
@@ -24,9 +32,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     request.headers.get('Cookie'),
   );
 
-  const { months, activeMonth, offline } = await resolveActiveMonth(
-    monthParam ?? cookieMonth,
-  );
+  const [{ months, activeMonth, offline }, { budgets }] = await Promise.all([
+    resolveActiveMonth(monthParam ?? cookieMonth),
+    getMasterData(),
+  ]);
 
   if (offline) {
     return data({
@@ -35,6 +44,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       prevMonth: null as string | null,
       activeMonth,
       months,
+      budgets,
       offline: true,
     });
   }
@@ -53,6 +63,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       prevMonth: hasPrev ? prev : null,
       activeMonth,
       months,
+      budgets,
     });
   } catch {
     return data({
@@ -61,6 +72,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       prevMonth: null as string | null,
       activeMonth,
       months,
+      budgets,
       error: 'Failed to load expenses',
     });
   }
@@ -91,6 +103,60 @@ function sumBy(entries: ExpenseEntry[], key: keyof ExpenseEntry) {
     totals.set(k, (totals.get(k) ?? 0) + e.amount);
   }
   return [...totals.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+const LEVEL_BAR: Record<BudgetLevel, string> = {
+  ok: 'bg-emerald-500',
+  warn: 'bg-amber-500',
+  over: 'bg-red-500',
+};
+
+const LEVEL_TEXT: Record<BudgetLevel, string> = {
+  ok: 'text-slate-500',
+  warn: 'text-amber-700',
+  over: 'text-red-600',
+};
+
+function BudgetBar({ ratio, level }: { ratio: number; level: BudgetLevel }) {
+  return (
+    <div className="h-2 w-full rounded-full bg-slate-100">
+      <div
+        className={`h-2 rounded-full ${LEVEL_BAR[level]}`}
+        style={{ width: `${Math.min(ratio, 1) * 100}%` }}
+      />
+    </div>
+  );
+}
+
+function BudgetList({ rows }: { rows: BudgetRow[] }) {
+  return (
+    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+      <h2 className="mb-3 text-sm font-semibold text-slate-900">Budget</h2>
+      <ul className="flex flex-col gap-3">
+        {rows.map((r) => (
+          <li key={r.category} className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="truncate font-medium text-slate-700">
+                {r.category}
+              </span>
+              <span className="shrink-0 text-slate-500">
+                <span className="font-semibold text-slate-900">
+                  {formatCompact(r.spent)}
+                </span>{' '}
+                / {formatCompact(r.budget)}
+              </span>
+            </div>
+            <BudgetBar ratio={r.ratio} level={r.level} />
+            <p className={`text-[11px] ${LEVEL_TEXT[r.level]}`}>
+              {r.spent > r.budget
+                ? `${formatAmount(r.spent - r.budget)} over`
+                : `${formatAmount(r.budget - r.spent)} left · ${Math.round(r.ratio * 100)}%`}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function BreakdownList({
@@ -211,6 +277,7 @@ export default function Dashboard() {
   const { activeMonth, months, prevMonth } = loaderData;
   const entries = loaderData.entries as ExpenseEntry[];
   const prevEntries = loaderData.prevEntries as ExpenseEntry[];
+  const budgets = loaderData.budgets as Record<string, number>;
   const navigate = useNavigate();
   const [sourceFilter, setSourceFilter] = useState('All');
 
@@ -242,6 +309,21 @@ export default function Dashboard() {
     const d = dayOfMonth(e.date);
     if (d !== null && d <= daysInMonth) daily[d - 1] += e.amount;
   }
+
+  const projected = isCurrentMonth
+    ? projectMonthTotal(total, daysElapsed, daysInMonth)
+    : null;
+
+  // Budgets cover the whole household, so they only apply to the unfiltered view
+  const showBudget = sourceFilter === 'All' && Object.keys(budgets).length > 0;
+  const budgetList = showBudget ? budgetRows(filtered, budgets) : [];
+  const budgetTotal = budgetList.reduce((s, r) => s + r.budget, 0);
+  const budgetSpent = budgetList.reduce((s, r) => s + r.spent, 0);
+  const budgetProjected = isCurrentMonth
+    ? projectMonthTotal(budgetSpent, daysElapsed, daysInMonth)
+    : budgetSpent;
+  const allBudgeted = budgetList.length > 0 &&
+    filtered.every((e) => e.category in budgets);
 
   const change =
     prevMonth && prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
@@ -316,6 +398,44 @@ export default function Dashboard() {
                   {formatAmount(prevTotal)})
                 </p>
               )}
+              {projected !== null && projected > total && (
+                <p className="mt-1 text-xs text-slate-300">
+                  On pace for{' '}
+                  <span className="font-semibold text-white">
+                    {formatAmount(projected)}
+                  </span>{' '}
+                  by month end
+                </p>
+              )}
+              {budgetTotal > 0 && (
+                <div className="mt-3 flex flex-col gap-1">
+                  <div className="flex justify-between text-[11px] text-slate-300">
+                    <span>
+                      {allBudgeted ? 'Budget' : 'Budgeted categories'}
+                    </span>
+                    <span>
+                      {formatCompact(budgetSpent)} / {formatCompact(budgetTotal)}{' '}
+                      · {Math.round((budgetSpent / budgetTotal) * 100)}%
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-slate-700">
+                    <div
+                      className={`h-2 rounded-full ${LEVEL_BAR[budgetLevel(budgetSpent, budgetTotal)]}`}
+                      style={{
+                        width: `${Math.min(budgetSpent / budgetTotal, 1) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  {isCurrentMonth &&
+                    budgetSpent <= budgetTotal &&
+                    budgetProjected > budgetTotal && (
+                      <p className="text-[11px] text-amber-300">
+                        At this pace you'll go over by{' '}
+                        {formatAmount(budgetProjected - budgetTotal)}
+                      </p>
+                    )}
+                </div>
+              )}
               <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-700 pt-3">
                 <div>
                   <p className="text-[10px] text-slate-400">Transactions</p>
@@ -335,6 +455,8 @@ export default function Dashboard() {
                 </div>
               </div>
             </section>
+
+            {budgetList.length > 0 && <BudgetList rows={budgetList} />}
 
             <DailyChart month={activeMonth} daily={daily} />
 

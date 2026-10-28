@@ -102,15 +102,16 @@ Follow these steps to configure Google Sheets as your datastore:
 
    It also creates a `Master` tab holding the choices shown in the form. Edit it directly in Sheets — changes appear in the app within a minute:
 
-   | Type     | Name   | Active |
-   | -------- | ------ | ------ |
-   | Category | Food   | ☑      |
-   | Method   | Cash   | ☑      |
-   | Source   | Agung  | ☑      |
+   | Type     | Name   | Active | Budget    |
+   | -------- | ------ | ------ | --------- |
+   | Category | Food   | ☑      | 1500000   |
+   | Method   | Cash   | ☑      |           |
+   | Source   | Agung  | ☑      |           |
 
    - `Type` is `Category`, `Method` or `Source`; rows show in sheet order.
    - Untick `Active` to hide an option without breaking old entries that use it.
    - If a type has no active rows, the defaults in `app/lib/constants.ts` are used.
+   - `Budget` (Category rows only) is the monthly limit in IDR. The dashboard shows progress per category (amber at 80%, red at 100%) and the app warns after a save that crosses it. Leave blank for no budget.
 
 8. **Share the spreadsheet with the Service Account**
    Click **Share**, paste the `client_email` from step 5, and grant **Editor** access.

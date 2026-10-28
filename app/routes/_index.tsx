@@ -18,6 +18,7 @@ import { expenseSchema } from '~/lib/validation';
 import { getMasterData } from '~/lib/master.server';
 import { jakartaTimestamp } from '~/lib/dates';
 import { parseRepeat } from '~/lib/filters';
+import { budgetAlert } from '~/lib/budget';
 import { ExpenseForm } from '~/components/expense-form';
 import { MonthSelector } from '~/components/month-selector';
 import { log } from '~/lib/logger.server';
@@ -34,6 +35,43 @@ import {
   registerBackgroundSync,
 } from '~/lib/offline-queue';
 import { syncPendingExpenses } from '~/lib/sync';
+
+const formatIdr = (n: number) => new Intl.NumberFormat('id-ID').format(n);
+
+// Runs after a successful save so it never slows the save itself down
+async function checkBudget(entry: {
+  month: string;
+  category: string;
+  amount: number;
+}) {
+  try {
+    const params = new URLSearchParams({
+      month: entry.month,
+      category: entry.category,
+    });
+    const res = await fetch(`/api/budget?${params}`);
+    if (!res.ok) return;
+    const { spent, budget } = (await res.json()) as {
+      spent: number;
+      budget: number;
+    };
+    if (!budget) return;
+    const alert = budgetAlert(spent, entry.amount, budget);
+    const usage = `IDR ${formatIdr(spent)} of IDR ${formatIdr(budget)}`;
+    if (alert === 'over') {
+      toast.error(`${entry.category} is over budget`, {
+        description: `${usage} (+IDR ${formatIdr(spent - budget)})`,
+      });
+    } else if (alert === 'warn') {
+      toast.warning(
+        `${entry.category} has used ${Math.round((spent / budget) * 100)}% of its budget`,
+        { description: usage },
+      );
+    }
+  } catch {
+    // Budget check is best-effort
+  }
+}
 
 function formatMonthLabel(month: string): string {
   const date = new Date(month + '-01');
@@ -317,6 +355,9 @@ export default function Index() {
         typeof navigator.vibrate === 'function'
       ) {
         navigator.vibrate(50);
+      }
+      if (master.budgets[actionData.entry.category]) {
+        checkBudget(actionData.entry);
       }
       clearPrefill();
       setFormKey((k) => k + 1);

@@ -32,7 +32,7 @@ async function createMasterTab(): Promise<void> {
     const rows = defaultMasterRows();
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `'${MASTER_TAB}'!A1:C${rows.length}`,
+      range: `'${MASTER_TAB}'!A1:D${rows.length}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: rows }
     });
@@ -64,16 +64,35 @@ async function createMasterTab(): Promise<void> {
   }
 }
 
+// Tabs created before budgets existed only have Type/Name/Active
+async function addBudgetHeader(): Promise<void> {
+  try {
+    await getSheetsClient().spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
+      range: `'${MASTER_TAB}'!D1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [['Budget']] }
+    });
+    log('info', 'sheets_master_budget_header_added', {});
+  } catch (err) {
+    log('error', 'sheets_master_budget_header_error', {
+      error: (err as Error).message
+    });
+  }
+}
+
 async function readMasterRows(): Promise<unknown[][]> {
   const sheets = getSheetsClient();
   const read = () =>
     sheets.spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
-      range: `'${MASTER_TAB}'!A:C`,
+      range: `'${MASTER_TAB}'!A:D`,
       valueRenderOption: 'UNFORMATTED_VALUE'
     });
   try {
-    return (await read()).data.values ?? [];
+    const rows = (await read()).data.values ?? [];
+    if (rows.length > 0 && !rows[0][3]) await addBudgetHeader();
+    return rows;
   } catch (err) {
     // The tab doesn't exist yet
     if (!(err as Error).message.includes('Unable to parse range')) throw err;

@@ -4,7 +4,8 @@ import { expenseEditSchema, expenseSchema } from './validation';
 const master = {
   categories: ['Food', 'Coffee'],
   methods: ['Cash', 'BCA'],
-  sources: ['Agung', 'Together']
+  sources: ['Agung', 'Together'],
+  budgets: {}
 };
 
 const valid = {
