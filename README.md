@@ -94,11 +94,23 @@ Follow these steps to configure Google Sheets as your datastore:
 6. **Create a Google Spreadsheet**
    Create a new spreadsheet in Google Sheets.
 
-7. **Add a "Transactions" sheet with the header row**
-   Rename the first sheet tab to `Transactions` and add these headers in row 1:
+7. **Tabs are created automatically**
+   The app creates one tab per month named `YYYY-MM` (e.g. `2026-10`) with these headers:
 
-   | Timestamp | User | Category | Amount | Method | Note | Date |
-   | --------- | ---- | -------- | ------ | ------ | ---- | ---- |
+   | Timestamp | Item | Category | Amount (IDR) | Payment Method | Date | Source |
+   | --------- | ---- | -------- | ------------ | -------------- | ---- | ------ |
+
+   It also creates a `Master` tab holding the choices shown in the form. Edit it directly in Sheets — changes appear in the app within a minute:
+
+   | Type     | Name   | Active |
+   | -------- | ------ | ------ |
+   | Category | Food   | ☑      |
+   | Method   | Cash   | ☑      |
+   | Source   | Agung  | ☑      |
+
+   - `Type` is `Category`, `Method` or `Source`; rows show in sheet order.
+   - Untick `Active` to hide an option without breaking old entries that use it.
+   - If a type has no active rows, the defaults in `app/lib/constants.ts` are used.
 
 8. **Share the spreadsheet with the Service Account**
    Click **Share**, paste the `client_email` from step 5, and grant **Editor** access.
@@ -126,7 +138,9 @@ duit-log/
 │   │   ├── sheets.server.ts     # Google Sheets API client
 │   │   ├── auth.server.ts       # Session/cookie helpers
 │   │   ├── logger.server.ts     # Structured JSON logging
-│   │   ├── constants.ts         # Categories, methods, users
+│   │   ├── master.server.ts     # Reads/creates the Master tab (cached)
+│   │   ├── dates.ts             # Date helpers (unit tested)
+│   │   ├── constants.ts         # Fallback categories, methods, sources
 │   │   └── validation.ts        # Zod schemas
 │   ├── components/
 │   │   ├── expense-form.tsx     # Main expense input form

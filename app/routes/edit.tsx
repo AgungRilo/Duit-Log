@@ -20,6 +20,8 @@ import {
 import { requireAuth } from '~/lib/auth.server';
 import { isNetworkError } from '~/lib/month.server';
 import { expenseEditSchema } from '~/lib/validation';
+import { getMasterData } from '~/lib/master.server';
+import { toIsoDate } from '~/lib/dates';
 import { log } from '~/lib/logger.server';
 import { ExpenseForm } from '~/components/expense-form';
 
@@ -30,14 +32,6 @@ function parseParams(month: unknown, row: unknown) {
     throw data('Expense not found', { status: 404, statusText: 'Expense not found' });
   }
   return { month: m, row: r };
-}
-
-// "M/D/YYYY" -> "YYYY-MM-DD"; falls back to the first day of the month
-function toIsoDate(date: string, month: string): string {
-  const parts = date.split('/');
-  if (parts.length !== 3) return `${month}-01`;
-  const [m, d, y] = parts;
-  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 }
 
 function formatMonthLabel(month: string): string {
@@ -57,7 +51,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     url.searchParams.get('row'),
   );
 
-  const entry = await getExpenseRow(month, row);
+  const [entry, master] = await Promise.all([
+    getExpenseRow(month, row),
+    getMasterData(),
+  ]);
   if (!entry || (!entry.item && !entry.amount)) {
     throw data('Expense not found', { status: 404, statusText: 'Expense not found' });
   }
@@ -66,6 +63,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     month,
     row,
     timestamp: entry.timestamp,
+    master,
     initial: {
       amount: entry.amount,
       item: entry.item,
@@ -103,7 +101,7 @@ export async function action({ request }: Route.ActionArgs) {
       });
     }
 
-    const result = expenseEditSchema(current).safeParse({
+    const result = expenseEditSchema(await getMasterData(), current).safeParse({
       month,
       item: formData.get('item'),
       date: formData.get('date'),
@@ -161,7 +159,8 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Edit() {
-  const { month, row, timestamp, initial } = useLoaderData<typeof loader>();
+  const { month, row, timestamp, master, initial } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -220,6 +219,7 @@ export default function Edit() {
         errors={errors}
         isSubmitting={navigation.state === 'submitting' && !isDeleting}
         selectedMonth={month}
+        options={master}
         initial={initial}
         hiddenFields={{ row: String(row), timestamp }}
         submitLabel="Save Changes"

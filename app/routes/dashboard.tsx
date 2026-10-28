@@ -13,12 +13,7 @@ import { resolveActiveMonth } from '~/lib/month.server';
 import { selectedMonthCookie } from '~/lib/cookies.server';
 import type { ExpenseEntry } from '~/lib/types';
 import { MonthSelector } from '~/components/month-selector';
-
-function previousMonth(month: string): string {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(y, m - 2, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
+import { dayOfMonth, previousMonth } from '~/lib/dates';
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAuth(request);
@@ -87,14 +82,6 @@ function monthName(month: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'long' }).format(
     new Date(y, m - 1, 1),
   );
-}
-
-// entry.date is "M/D/YYYY"; returns the day of month, or null
-function dayOfMonth(entry: ExpenseEntry): number | null {
-  const parts = entry.date.split('/');
-  if (parts.length !== 3) return null;
-  const day = Number(parts[1]);
-  return Number.isInteger(day) && day >= 1 && day <= 31 ? day : null;
 }
 
 function sumBy(entries: ExpenseEntry[], key: keyof ExpenseEntry) {
@@ -252,7 +239,7 @@ export default function Dashboard() {
 
   const daily = Array.from({ length: daysInMonth }, () => 0);
   for (const e of filtered) {
-    const d = dayOfMonth(e);
+    const d = dayOfMonth(e.date);
     if (d !== null && d <= daysInMonth) daily[d - 1] += e.amount;
   }
 
@@ -385,8 +372,8 @@ export default function Dashboard() {
                       </p>
                       <p className="text-[11px] text-slate-400">
                         {e.category}
-                        {dayOfMonth(e) !== null &&
-                          ` · ${monthName(activeMonth).slice(0, 3)} ${dayOfMonth(e)}`}
+                        {dayOfMonth(e.date) !== null &&
+                          ` · ${monthName(activeMonth).slice(0, 3)} ${dayOfMonth(e.date)}`}
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-semibold text-slate-900">

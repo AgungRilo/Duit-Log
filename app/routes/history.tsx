@@ -13,7 +13,7 @@ import { requireAuth } from '~/lib/auth.server';
 import { resolveActiveMonth } from '~/lib/month.server';
 import { selectedMonthCookie } from '~/lib/cookies.server';
 import type { ExpenseEntry } from '~/lib/types';
-import { SOURCES } from '~/lib/constants';
+import { getMasterData } from '~/lib/master.server';
 import { ExpenseCard } from '~/components/expense-card';
 import { MonthSelector } from '~/components/month-selector';
 import { getPendingCount } from '~/lib/offline-queue';
@@ -29,15 +29,17 @@ export async function loader({ request }: Route.LoaderArgs) {
     request.headers.get('Cookie'),
   );
 
-  const { months, activeMonth, offline } = await resolveActiveMonth(
-    monthParam ?? cookieMonth,
-  );
+  const [{ months, activeMonth, offline }, { sources }] = await Promise.all([
+    resolveActiveMonth(monthParam ?? cookieMonth),
+    getMasterData(),
+  ]);
 
   if (offline) {
     return data({
       entries: [] as ExpenseEntry[],
       activeMonth,
       months,
+      sources,
       offline: true,
     });
   }
@@ -45,12 +47,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   try {
     const LIMIT = 20;
     const entries = await getExpensesByMonth(activeMonth, LIMIT);
-    return data({ entries, activeMonth, months });
+    return data({ entries, activeMonth, months, sources });
   } catch {
     return data({
       entries: [] as ExpenseEntry[],
       activeMonth,
       months,
+      sources,
       error: 'Failed to load expenses',
     });
   }
@@ -65,6 +68,7 @@ export default function History() {
   const entries = loaderData.entries as ExpenseEntry[];
   const activeMonth = loaderData.activeMonth as string;
   const months = loaderData.months as string[];
+  const sources = loaderData.sources as string[];
   const navigate = useNavigate();
 
   type State = {
@@ -218,12 +222,12 @@ export default function History() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-1 px-4 pb-2">
-        {['All', ...SOURCES].map((s) => (
+      <div className="flex gap-1 overflow-x-auto px-4 pb-2">
+        {['All', ...sources].map((s) => (
           <button
             key={s}
             onClick={() => dispatch({ type: 'SET_SOURCE_FILTER', filter: s })}
-            className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${sourceFilter === s
+            className={`min-w-16 flex-1 shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${sourceFilter === s
                 ? 'bg-slate-900 text-white'
                 : 'bg-slate-100 text-slate-600'
               }`}

@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { Form } from 'react-router';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
-import { CATEGORIES, METHODS, SOURCES } from '~/lib/constants';
+import type { MasterData } from '~/lib/master';
 import { Calendar } from '~/components/ui/calendar';
 import {
   Popover,
@@ -17,6 +17,8 @@ interface ExpenseFormProps {
   isSubmitting?: boolean;
   amountRef?: RefObject<HTMLInputElement | null>;
   selectedMonth?: string;
+  /** Category / method / source choices from the Master tab */
+  options: MasterData;
   defaultSource?: string;
   isOnline?: boolean;
   onOfflineSubmit?: (formData: FormData) => Promise<void>;
@@ -85,6 +87,7 @@ export function ExpenseForm({
   isSubmitting,
   amountRef,
   selectedMonth,
+  options,
   defaultSource,
   isOnline = true,
   onOfflineSubmit,
@@ -211,7 +214,7 @@ export function ExpenseForm({
           Category
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {withValue(CATEGORIES, initial?.category).map((c) => (
+          {withValue(options.categories, initial?.category).map((c) => (
             <label key={c} className="cursor-pointer">
               <input
                 type="radio"
@@ -239,7 +242,7 @@ export function ExpenseForm({
           Payment Method
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {withValue(METHODS, initial?.method).map((m) => (
+          {withValue(options.methods, initial?.method).map((m) => (
             <label key={m} className="cursor-pointer">
               <input
                 type="radio"
@@ -318,14 +321,14 @@ export function ExpenseForm({
           Paid from
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {withValue(SOURCES, initial?.source).map((s) => (
+          {withValue(options.sources, initial?.source).map((s) => (
             <label key={s} className="cursor-pointer">
               <input
                 type="radio"
                 name="source"
                 value={s}
                 defaultChecked={
-                  s === (initial?.source ?? defaultSource ?? 'Agung')
+                  s === (initial?.source ?? defaultSource ?? options.sources[0])
                 }
                 className="peer sr-only"
               />

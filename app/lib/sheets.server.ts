@@ -1,11 +1,12 @@
 import { google } from 'googleapis';
 import { log } from './logger.server';
 import type { ExpenseEntry } from './types';
+import { serialToString } from './dates';
 
 // Singleton — reuse across requests in the same server instance
 let _sheets: ReturnType<typeof google.sheets> | null = null;
 
-function getSheetsClient() {
+export function getSheetsClient() {
   if (_sheets) return _sheets;
 
   const auth = new google.auth.GoogleAuth({
@@ -19,16 +20,6 @@ function getSheetsClient() {
 
   _sheets = google.sheets({ version: 'v4', auth });
   return _sheets;
-}
-
-// Converts a Sheets date serial number (days since 1899-12-30) to
-// "M/D/YYYY" or "M/D/YYYY HH:mm:ss"
-function serialToString(serial: number, withTime: boolean): string {
-  const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
-  const date = `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${d.getUTCFullYear()}`;
-  if (!withTime) return date;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
 export async function getAvailableMonths(): Promise<string[]> {

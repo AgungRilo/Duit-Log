@@ -4,12 +4,14 @@ import { requireAuth } from "~/lib/auth.server";
 import { expenseSchema } from "~/lib/validation";
 import { appendExpense, ensureMonthSheet } from "~/lib/sheets.server";
 import { log } from "~/lib/logger.server";
+import { getMasterData } from "~/lib/master.server";
+import { jakartaTimestamp } from "~/lib/dates";
 
 export async function action({ request }: Route.ActionArgs) {
   await requireAuth(request);
 
   const body = await request.json();
-  const result = expenseSchema.safeParse(body);
+  const result = expenseSchema(await getMasterData()).safeParse(body);
 
   if (!result.success) {
     return data({ success: false, error: "Validation failed" }, { status: 400 });
@@ -21,10 +23,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   // Use original submission time (createdAt) if available, otherwise use current time
   const createdAt = body.createdAt ? new Date(body.createdAt) : new Date();
-  const jakartaDate = new Date(
-    createdAt.toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
-  );
-  const timestamp = `${jakartaDate.getFullYear()}-${String(jakartaDate.getMonth() + 1).padStart(2, "0")}-${String(jakartaDate.getDate()).padStart(2, "0")} ${String(jakartaDate.getHours()).padStart(2, "0")}:${String(jakartaDate.getMinutes()).padStart(2, "0")}:${String(jakartaDate.getSeconds()).padStart(2, "0")}`;
+  const timestamp = jakartaTimestamp(createdAt);
 
   // ISO format so Sheets parses it correctly regardless of spreadsheet locale
   const formattedDate = parsed.date;

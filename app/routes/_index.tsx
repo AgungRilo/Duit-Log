@@ -13,6 +13,8 @@ import {
   ensureMonthSheet,
 } from '~/lib/sheets.server';
 import { expenseSchema } from '~/lib/validation';
+import { getMasterData } from '~/lib/master.server';
+import { jakartaTimestamp } from '~/lib/dates';
 import { ExpenseForm } from '~/components/expense-form';
 import { MonthSelector } from '~/components/month-selector';
 import { log } from '~/lib/logger.server';
@@ -74,12 +76,18 @@ export async function loader({ request }: Route.LoaderArgs) {
   const cookieMonth = await selectedMonthCookie.parse(cookieHeader);
   const cookieSource = await selectedSourceCookie.parse(cookieHeader);
 
-  const { months, activeMonth } = await resolveActiveMonth(cookieMonth);
+  const [{ months, activeMonth }, master] = await Promise.all([
+    resolveActiveMonth(cookieMonth),
+    getMasterData(),
+  ]);
 
   return data({
     months,
     activeMonth,
-    defaultSource: cookieSource ?? 'Agung',
+    master,
+    defaultSource: master.sources.includes(cookieSource)
+      ? (cookieSource as string)
+      : master.sources[0],
   });
 }
 
@@ -96,7 +104,7 @@ export async function action({ request }: Route.ActionArgs) {
     source: formData.get('source') as string,
   };
 
-  const result = expenseSchema.safeParse(raw);
+  const result = expenseSchema(await getMasterData()).safeParse(raw);
 
   if (!result.success) {
     const fieldErrors: Record<string, string> = {};
@@ -119,11 +127,7 @@ export async function action({ request }: Route.ActionArgs) {
     // Offline — skip verification and let appendExpense attempt (and fail) below
   }
 
-  const now = new Date();
-  const jakartaDate = new Date(
-    now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }),
-  );
-  const timestamp = `${jakartaDate.getFullYear()}-${String(jakartaDate.getMonth() + 1).padStart(2, '0')}-${String(jakartaDate.getDate()).padStart(2, '0')} ${String(jakartaDate.getHours()).padStart(2, '0')}:${String(jakartaDate.getMinutes()).padStart(2, '0')}:${String(jakartaDate.getSeconds()).padStart(2, '0')}`;
+  const timestamp = jakartaTimestamp();
 
   // ISO format so Sheets parses it correctly regardless of spreadsheet locale
   const formattedDate = parsed.date;
@@ -194,7 +198,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Index() {
-  const { months, activeMonth, defaultSource } =
+  const { months, activeMonth, master, defaultSource } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as
     | ActionData
@@ -422,6 +426,7 @@ export default function Index() {
         isSubmitting={isSubmitting}
         amountRef={amountRef}
         selectedMonth={selectedMonth}
+        options={master}
         defaultSource={defaultSource}
         isOnline={isOnline}
         onOfflineSubmit={handleOfflineSubmit}
