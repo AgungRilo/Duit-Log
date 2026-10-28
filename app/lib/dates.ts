@@ -72,3 +72,10 @@ export function monthOfSheetDate(date: string): string | null {
   if (!Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(y)) return null;
   return `${y}-${String(m).padStart(2, '0')}`;
 }
+
+// "M/D/YYYY" sheet date -> "YYYY-MM-DD", or null when unparseable
+export function sheetDateToIso(date: string): string | null {
+  const month = monthOfSheetDate(date);
+  const day = dayOfMonth(date);
+  return month && day ? `${month}-${String(day).padStart(2, '0')}` : null;
+}

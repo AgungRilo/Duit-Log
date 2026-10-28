@@ -11,7 +11,8 @@ const master = {
   methods: ['Cash', 'BCA'],
   sources: ['Agung', 'Together'],
   incomeCategories: ['Salary'],
-  budgets: {}
+  budgets: {},
+  openingBalances: {}
 };
 
 const valid = {

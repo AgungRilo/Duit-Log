@@ -111,6 +111,7 @@ Follow these steps to configure Google Sheets as your datastore:
    - `Type` is `Category`, `Method`, `Source` or `IncomeCategory`; rows show in sheet order.
    - Untick `Active` to hide an option without breaking old entries that use it.
    - If a type has no active rows, the defaults in `app/lib/constants.ts` are used.
+   - `Opening balance` and `Balance date` (Method rows only) turn on **Pocket balances** on the dashboard: the balance on that date (`YYYY-MM-DD`, or a typed date) plus all income and transfers in, minus spending and transfers out, logged from that date on. Leave the date blank to count everything.
    - `Budget` (Category rows only) is the monthly limit in IDR. The dashboard shows progress per category (amber at 80%, red at 100%) and the app warns after a save that crosses it. Leave blank for no budget.
 
    A `Recurring` tab holds monthly bills. They appear on the Add page under **Bills this month** until logged, each with a one-tap **Log** button:

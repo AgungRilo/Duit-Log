@@ -5,6 +5,7 @@ import {
   monthOfSheetDate,
   previousMonth,
   serialToString,
+  sheetDateToIso,
   toIsoDate
 } from './dates';
 
@@ -93,5 +94,13 @@ describe('monthOfSheetDate', () => {
     expect(monthOfSheetDate('')).toBeNull();
     expect(monthOfSheetDate('2026-03-07')).toBeNull();
     expect(monthOfSheetDate('13/1/2026')).toBeNull();
+  });
+});
+
+describe('sheetDateToIso', () => {
+  it('converts M/D/YYYY and rejects junk', () => {
+    expect(sheetDateToIso('3/7/2026')).toBe('2026-03-07');
+    expect(sheetDateToIso('')).toBeNull();
+    expect(sheetDateToIso('2026-03-07')).toBeNull();
   });
 });

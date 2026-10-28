@@ -18,10 +18,17 @@ export async function appendTransfer(row: string[]): Promise<void> {
   await appendRowCreatingTab(TRANSFERS_TAB, TRANSFER_HEADERS, row);
 }
 
-/** Transfers dated in `month`, newest first; empty when the tab doesn't exist yet */
+/** Transfers dated in `month`, newest first */
 export async function getTransfersByMonth(
   month: string
 ): Promise<TransferEntry[]> {
+  return (await getAllTransfers()).filter(
+    (t) => monthOfSheetDate(t.date) === month
+  );
+}
+
+/** Every transfer, newest first; empty when the tab doesn't exist yet */
+export async function getAllTransfers(): Promise<TransferEntry[]> {
   try {
     const res = await getSheetsClient().spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
@@ -29,9 +36,7 @@ export async function getTransfersByMonth(
       valueRenderOption: 'UNFORMATTED_VALUE',
       dateTimeRenderOption: 'SERIAL_NUMBER'
     });
-    return parseTransferRows(res.data.values ?? [])
-      .filter((t) => monthOfSheetDate(t.date) === month)
-      .reverse();
+    return parseTransferRows(res.data.values ?? []).reverse();
   } catch (err) {
     if (isMissingTab(err)) return [];
     log('error', 'sheets_transfers_get_error', { error: (err as Error).message });

@@ -12,7 +12,8 @@ const master = {
   methods: ['JAGO', 'Cash'],
   sources: ['Agung', 'Together'],
   incomeCategories: ['Salary'],
-  budgets: {}
+  budgets: {},
+  openingBalances: {}
 };
 
 const rows = [

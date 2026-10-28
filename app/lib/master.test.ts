@@ -5,6 +5,7 @@ import {
   defaultMasterRows,
   hasIncomeCategoryRows,
   nextFreeRow,
+  parseBalance,
   parseBudget,
   parseMasterRows
 } from './master';
@@ -25,7 +26,25 @@ describe('parseMasterRows', () => {
       methods: ['Cash'],
       sources: ['Agung'],
       incomeCategories: FALLBACK_MASTER.incomeCategories,
-      budgets: {}
+      budgets: {},
+      openingBalances: {}
+    });
+  });
+
+  it('reads opening balances for active methods, keeping 0 and blanks apart', () => {
+    const result = parseMasterRows([
+      header,
+      ['Method', 'JAGO', true, '', 5000000, 46296],
+      ['Method', 'Cash', true, '', 0, '2026-10-01'],
+      ['Method', 'BCA', true, '', '1.250.000', '1/10/2026'],
+      ['Method', 'Shopee Pay', true, '', ''],
+      ['Method', 'Old', false, '', 100],
+      ['Category', 'Food', true, '', 100]
+    ]);
+    expect(result.openingBalances).toEqual({
+      JAGO: { amount: 5000000, since: '2026-10-01' },
+      Cash: { amount: 0, since: '2026-10-01' },
+      BCA: { amount: 1250000, since: null }
     });
   });
 
@@ -140,5 +159,16 @@ describe('nextFreeRow', () => {
   it('starts below the header of an empty tab', () => {
     expect(nextFreeRow([header])).toBe(2);
     expect(nextFreeRow([])).toBe(2);
+  });
+});
+
+describe('parseBalance', () => {
+  it('keeps zero and negative balances, null when blank', () => {
+    expect(parseBalance(0)).toBe(0);
+    expect(parseBalance(-250000)).toBe(-250000);
+    expect(parseBalance('-250.000')).toBe(-250000);
+    expect(parseBalance('IDR 1,000')).toBe(1000);
+    expect(parseBalance('')).toBeNull();
+    expect(parseBalance(undefined)).toBeNull();
   });
 });

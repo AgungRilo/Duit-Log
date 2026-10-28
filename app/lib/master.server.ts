@@ -2,6 +2,7 @@ import { getSheetsClient } from './sheets.server';
 import { log } from './logger.server';
 import {
   FALLBACK_MASTER,
+  MASTER_HEADERS,
   defaultIncomeCategoryRows,
   defaultMasterRows,
   hasIncomeCategoryRows,
@@ -37,7 +38,7 @@ async function createMasterTab(): Promise<void> {
     const rows = defaultMasterRows();
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `'${MASTER_TAB}'!A1:D${rows.length}`,
+      range: `'${MASTER_TAB}'!A1:F${rows.length}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: rows }
     });
@@ -69,18 +70,22 @@ async function createMasterTab(): Promise<void> {
   }
 }
 
-// Tabs created before budgets existed only have Type/Name/Active
-async function addBudgetHeader(): Promise<void> {
+// Tabs created before budgets/balances existed lack the later header cells
+async function addMissingHeaders(header: unknown[]): Promise<void> {
+  if (MASTER_HEADERS.every((h, i) => header[i])) return;
   try {
+    // Fixed cells, never append: only fills headers, keeps any custom ones
     await getSheetsClient().spreadsheets.values.update({
       spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
-      range: `'${MASTER_TAB}'!D1`,
+      range: `'${MASTER_TAB}'!A1:${String.fromCharCode(64 + MASTER_HEADERS.length)}1`,
       valueInputOption: 'RAW',
-      requestBody: { values: [['Budget']] }
+      requestBody: {
+        values: [MASTER_HEADERS.map((h, i) => (header[i] ? String(header[i]) : h))]
+      }
     });
-    log('info', 'sheets_master_budget_header_added', {});
+    log('info', 'sheets_master_headers_added', {});
   } catch (err) {
-    log('error', 'sheets_master_budget_header_error', {
+    log('error', 'sheets_master_headers_error', {
       error: (err as Error).message
     });
   }
@@ -118,12 +123,12 @@ async function readMasterRows(): Promise<unknown[][]> {
   const read = () =>
     sheets.spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
-      range: `'${MASTER_TAB}'!A:D`,
+      range: `'${MASTER_TAB}'!A:F`,
       valueRenderOption: 'UNFORMATTED_VALUE'
     });
   try {
     const rows = (await read()).data.values ?? [];
-    if (rows.length > 0 && !rows[0][3]) await addBudgetHeader();
+    if (rows.length > 0) await addMissingHeaders(rows[0]);
     if (rows.length > 0 && !hasIncomeCategoryRows(rows)) {
       return [...rows, ...(await addIncomeCategoryRows(rows))];
     }

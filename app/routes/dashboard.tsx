@@ -15,8 +15,10 @@ import type { ExpenseEntry } from '~/lib/types';
 import { MonthSelector } from '~/components/month-selector';
 import { dayOfMonth, previousMonth } from '~/lib/dates';
 import { getMasterData } from '~/lib/master.server';
-import { getIncomeByMonth } from '~/lib/income.server';
-import { getTransfersByMonth } from '~/lib/transfers.server';
+import { getAllIncome } from '~/lib/income.server';
+import { getAllTransfers } from '~/lib/transfers.server';
+import { pocketBalances, type PocketBalance } from '~/lib/balances';
+import { daysInMonth as monthLength, monthOfSheetDate } from '~/lib/dates';
 import type { TransferEntry } from '~/lib/transfers';
 import { methodFlows, type MethodFlow } from '~/lib/cashflow';
 import {
@@ -47,7 +49,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     request.headers.get('Cookie'),
   );
 
-  const [{ months, activeMonth, offline }, { budgets }] = await Promise.all([
+  const [{ months, activeMonth, offline }, master] = await Promise.all([
     resolveActiveMonth(monthParam ?? cookieMonth),
     getMasterData(),
   ]);
@@ -58,35 +60,53 @@ export async function loader({ request }: Route.LoaderArgs) {
       trend: [] as MonthSummary[],
       income: [] as ExpenseEntry[],
       transfers: [] as TransferEntry[],
+      balances: null as PocketBalance[] | null,
       prevMonth: null as string | null,
       activeMonth,
       months,
-      budgets,
+      budgets: master.budgets,
       offline: true,
     });
   }
 
   const prev = previousMonth(activeMonth);
-  // Active month plus up to five before it, read in one API call
+  // Active month plus up to five before it, for the trend charts
   const monthsToRead = trendMonths(months, activeMonth);
+  // Pocket balances need every month up to the active one
+  const hasOpenings = Object.keys(master.openingBalances).length > 0;
+  const balanceMonths = hasOpenings
+    ? months.filter((m) => m <= activeMonth)
+    : monthsToRead;
+  const inMonth = (e: { date: string }) => monthOfSheetDate(e.date) === activeMonth;
 
   try {
-    const [byMonth, income, transfers] = await Promise.all([
-      getExpensesByMonths(monthsToRead),
+    const [byMonth, allIncome, allTransfers] = await Promise.all([
+      // One batchGet covers both the trend and the balance months
+      getExpensesByMonths(balanceMonths),
       // Income and transfers are optional; a failure shouldn't hide the expense dashboard
-      getIncomeByMonth(activeMonth).catch(() => [] as ExpenseEntry[]),
-      getTransfersByMonth(activeMonth).catch(() => [] as TransferEntry[]),
+      getAllIncome().catch(() => [] as ExpenseEntry[]),
+      getAllTransfers().catch(() => [] as TransferEntry[]),
     ]);
+    const lastDay = `${activeMonth}-${String(monthLength(activeMonth)).padStart(2, '0')}`;
     return data({
       entries: byMonth[activeMonth] ?? [],
-      income,
-      transfers,
+      income: allIncome.filter(inMonth),
+      transfers: allTransfers.filter(inMonth),
+      balances: hasOpenings
+        ? pocketBalances(
+            master.openingBalances,
+            Object.values(byMonth).flat(),
+            allIncome,
+            allTransfers,
+            lastDay,
+          )
+        : null,
       // Older months only need totals, which keeps the payload small
       trend: monthsToRead.map((m) => summarizeMonth(m, byMonth[m] ?? [])),
       prevMonth: monthsToRead.includes(prev) ? prev : null,
       activeMonth,
       months,
-      budgets,
+      budgets: master.budgets,
     });
   } catch {
     return data({
@@ -94,10 +114,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       trend: [] as MonthSummary[],
       income: [] as ExpenseEntry[],
       transfers: [] as TransferEntry[],
+      balances: null as PocketBalance[] | null,
       prevMonth: null as string | null,
       activeMonth,
       months,
-      budgets,
+      budgets: master.budgets,
       error: 'Failed to load expenses',
     });
   }
@@ -361,16 +382,82 @@ function CategoryTrendList({
   );
 }
 
+function formatShortDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(y, m - 1, d));
+}
+
+function PocketBalances({
+  balances,
+  asOf,
+}: {
+  balances: PocketBalance[];
+  /** Label for the cutoff, e.g. "today" or "end of October" */
+  asOf: string;
+}) {
+  const total = balances.reduce((s, b) => s + b.balance, 0);
+  return (
+    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-sm font-semibold text-slate-900">Pocket balances</h2>
+        <span className="text-[11px] text-slate-500">as of {asOf}</span>
+      </div>
+      <ul className="flex flex-col divide-y divide-slate-100">
+        {balances.map((b) => (
+          <li key={b.method} className="flex items-center justify-between gap-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-800">
+                {b.method}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {formatCompact(b.opening)}
+                {b.since && ` on ${formatShortDate(b.since)}`} · +
+                {formatCompact(b.in)} · −{formatCompact(b.out)}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 text-sm font-semibold ${b.balance < 0 ? 'text-red-600' : 'text-slate-900'}`}
+            >
+              {formatAmount(b.balance)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {balances.length > 1 && (
+        <div className="mt-1 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
+          <span className="font-medium text-slate-600">Total</span>
+          <span
+            className={`font-bold ${total < 0 ? 'text-red-600' : 'text-slate-900'}`}
+          >
+            {formatAmount(total)}
+          </span>
+        </div>
+      )}
+      <p className="mt-2 text-[10px] text-slate-400">
+        Opening balance from the Master tab, plus everything logged since.
+        A negative balance usually means something wasn't logged.
+      </p>
+    </section>
+  );
+}
+
 function CashFlow({
   income,
   spent,
   flows,
   transfers,
+  showBalanceHint,
 }: {
   income: number;
   spent: number;
   flows: MethodFlow[];
   transfers: TransferEntry[];
+  /** No opening balances set yet, so point to where they go */
+  showBalanceHint: boolean;
 }) {
   const net = income - spent;
   const signed = (n: number) => `${n < 0 ? '−' : n > 0 ? '+' : ''}${formatCompact(Math.abs(n))}`;
@@ -458,6 +545,12 @@ function CashFlow({
         Money in and out this month, not account balances. Transfers move
         money between pockets and don't count as income or spending.
       </p>
+      {showBalanceHint && (
+        <p className="mt-1 text-[10px] text-slate-400">
+          To see real pocket balances, fill in “Opening balance” (and
+          optionally “Balance date”) for each Method in the Master tab.
+        </p>
+      )}
     </section>
   );
 }
@@ -584,6 +677,7 @@ export default function Dashboard() {
   const trend = loaderData.trend as MonthSummary[];
   const income = loaderData.income as ExpenseEntry[];
   const transfers = loaderData.transfers as TransferEntry[];
+  const balances = loaderData.balances as PocketBalance[] | null;
   const budgets = loaderData.budgets as Record<string, number>;
   const navigate = useNavigate();
   const [sourceFilter, setSourceFilter] = useState('All');
@@ -774,12 +868,21 @@ export default function Dashboard() {
               </div>
             </section>
 
+            {/* Balances are per pocket, not per person */}
+            {balances && sourceFilter === 'All' && (
+              <PocketBalances
+                balances={balances}
+                asOf={isCurrentMonth ? 'end of this month' : `end of ${monthName(activeMonth)}`}
+              />
+            )}
+
             {(incomeFiltered.length > 0 || transfersShown.length > 0) && (
               <CashFlow
                 income={incomeTotal}
                 spent={total}
                 flows={methodFlows(filtered, incomeFiltered, transfersShown)}
                 transfers={transfersShown}
+                showBalanceHint={balances === null}
               />
             )}
 

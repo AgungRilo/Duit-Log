@@ -102,7 +102,8 @@ describe('parseRepeat', () => {
     methods: ['Cash'],
     sources: ['Agung'],
     incomeCategories: ['Salary'],
-    budgets: {}
+    budgets: {},
+    openingBalances: {}
   };
 
   it('round-trips an entry through repeatSearch', () => {

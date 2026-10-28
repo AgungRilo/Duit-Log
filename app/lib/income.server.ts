@@ -26,8 +26,13 @@ export async function appendIncome(row: string[]): Promise<void> {
   await appendRowCreatingTab(INCOME_TAB, INCOME_HEADERS, row);
 }
 
-/** Income dated in `month`, newest first; empty when the tab doesn't exist yet */
+/** Income dated in `month`, newest first */
 export async function getIncomeByMonth(month: string): Promise<ExpenseEntry[]> {
+  return (await getAllIncome()).filter((e) => monthOfSheetDate(e.date) === month);
+}
+
+/** Every income entry, newest first; empty when the tab doesn't exist yet */
+export async function getAllIncome(): Promise<ExpenseEntry[]> {
   try {
     const res = await getSheetsClient().spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
@@ -35,9 +40,7 @@ export async function getIncomeByMonth(month: string): Promise<ExpenseEntry[]> {
       valueRenderOption: 'UNFORMATTED_VALUE',
       dateTimeRenderOption: 'SERIAL_NUMBER'
     });
-    return toEntries(res.data.values ?? [])
-      .filter((e) => monthOfSheetDate(e.date) === month)
-      .reverse();
+    return toEntries(res.data.values ?? []).reverse();
   } catch (err) {
     if (isMissingTab(err)) return [];
     log('error', 'sheets_income_get_error', { error: (err as Error).message });
