@@ -9,8 +9,10 @@ export interface PendingExpense {
     category: string;
     method: string;
     source: string;
-    /** "income" for income entries; absent for expenses queued by older versions */
+    /** "income" or "transfer"; absent for expenses queued by older versions */
     kind?: string;
+    /** Destination method of a transfer */
+    to?: string;
   };
 }
 

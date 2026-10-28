@@ -1,4 +1,5 @@
 import type { ExpenseEntry } from './types';
+import type { TransferEntry } from './transfers';
 
 export interface MethodFlow {
   method: string;
@@ -7,10 +8,14 @@ export interface MethodFlow {
   net: number;
 }
 
-/** Money in and out per payment method, busiest method first */
+/**
+ * Money in and out per payment method, busiest method first. Transfers move
+ * money between methods, so they count here but cancel out in the totals.
+ */
 export function methodFlows(
   expenses: ExpenseEntry[],
-  income: ExpenseEntry[]
+  income: ExpenseEntry[],
+  transfers: TransferEntry[] = []
 ): MethodFlow[] {
   const flows = new Map<string, MethodFlow>();
   const get = (method: string) => {
@@ -21,6 +26,10 @@ export function methodFlows(
   };
   for (const e of income) get(e.method).in += e.amount;
   for (const e of expenses) get(e.method).out += e.amount;
+  for (const t of transfers) {
+    get(t.from).out += t.amount;
+    get(t.to).in += t.amount;
+  }
   return [...flows.values()]
     .map((f) => ({ ...f, net: f.in - f.out }))
     .sort((a, b) => b.in + b.out - (a.in + a.out));

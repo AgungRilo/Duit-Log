@@ -14,7 +14,8 @@ import {
   appendExpense,
   ensureMonthSheet,
 } from '~/lib/sheets.server';
-import { expenseSchema, incomeSchema } from '~/lib/validation';
+import { expenseSchema, incomeSchema, transferSchema } from '~/lib/validation';
+import { appendTransfer } from '~/lib/transfers.server';
 import { appendIncome } from '~/lib/income.server';
 import { getMasterData } from '~/lib/master.server';
 import { jakartaTimestamp } from '~/lib/dates';
@@ -83,38 +84,35 @@ function formatMonthLabel(month: string): string {
   }).format(date);
 }
 
-type Kind = 'expense' | 'income';
+type Kind = 'expense' | 'income' | 'transfer';
+
+// Everything the form posts; a transfer also has `to` and leaves category/source blank
+type SavedEntry = {
+  month: string;
+  item: string;
+  date: string;
+  amount: number;
+  category: string;
+  method: string;
+  source: string;
+  to: string;
+  kind: Kind;
+};
 
 type ActionData =
-  | {
-      success: true;
-      entry: {
-        item: string;
-        category: string;
-        amount: number;
-        method: string;
-        date: string;
-        source: string;
-        month: string;
-        kind: Kind;
-      };
-    }
+  | { success: true; entry: SavedEntry }
   | { success: false; errors: Record<string, string> }
   | { success: false; error: string }
-  | {
-      success: false;
-      networkError: true;
-      pendingData: {
-        month: string;
-        item: string;
-        date: string;
-        amount: number;
-        category: string;
-        method: string;
-        source: string;
-        kind: Kind;
-      };
-    };
+  | { success: false; networkError: true; pendingData: SavedEntry };
+
+function fieldErrors(issues: { path: PropertyKey[]; message: string }[]) {
+  const errors: Record<string, string> = {};
+  for (const issue of issues) {
+    const key = String(issue.path[0]);
+    if (!errors[key]) errors[key] = issue.message;
+  }
+  return errors;
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAuth(request);
@@ -143,6 +141,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   await requireAuth(request);
   const formData = await request.formData();
+  const kind: Kind =
+    formData.get('kind') === 'income'
+      ? 'income'
+      : formData.get('kind') === 'transfer'
+        ? 'transfer'
+        : 'expense';
   const raw = {
     month: formData.get('month') as string,
     item: formData.get('item') as string,
@@ -151,32 +155,32 @@ export async function action({ request }: Route.ActionArgs) {
     category: formData.get('category') as string,
     method: formData.get('method') as string,
     source: formData.get('source') as string,
+    to: formData.get('to') as string,
   };
 
-  const kind: Kind = formData.get('kind') === 'income' ? 'income' : 'expense';
   const master = await getMasterData();
-  const result = (
-    kind === 'income' ? incomeSchema(master) : expenseSchema(master)
-  ).safeParse(raw);
-
-  if (!result.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of result.error.issues) {
-      const key = issue.path[0] as string;
-      if (!fieldErrors[key]) {
-        fieldErrors[key] = issue.message;
-      }
+  let entry: SavedEntry;
+  if (kind === 'transfer') {
+    const result = transferSchema(master).safeParse(raw);
+    if (!result.success) {
+      return data({ success: false as const, errors: fieldErrors(result.error.issues) });
     }
-    return data({ success: false as const, errors: fieldErrors });
+    const t = result.data;
+    entry = { ...t, category: '', source: '', kind };
+  } else {
+    const schema = kind === 'income' ? incomeSchema(master) : expenseSchema(master);
+    const result = schema.safeParse(raw);
+    if (!result.success) {
+      return data({ success: false as const, errors: fieldErrors(result.error.issues) });
+    }
+    entry = { ...result.data, to: '', kind };
   }
 
-  const parsed = result.data;
-
   // Create the target month tab if missing (skip when offline — appendExpense will fail gracefully)
-  // Income lives in its own tab, which appendIncome creates when needed
+  // Income and transfers live in their own tabs, created on first save
   if (kind === 'expense') {
     try {
-      await ensureMonthSheet(parsed.month);
+      await ensureMonthSheet(entry.month);
     } catch (err) {
       if (!isNetworkError(err)) throw err;
       // Offline — skip verification and let appendExpense attempt (and fail) below
@@ -185,65 +189,53 @@ export async function action({ request }: Route.ActionArgs) {
 
   const timestamp = jakartaTimestamp();
 
-  // ISO format so Sheets parses it correctly regardless of spreadsheet locale
-  const formattedDate = parsed.date;
-
-  const row = [
-    timestamp, // Timestamp
-    parsed.item, // Item
-    parsed.category, // Category
-    String(parsed.amount), // Amount (IDR)
-    parsed.method, // Payment Method
-    formattedDate, // Date
-    parsed.source, // Source
-  ];
-
   try {
-    if (kind === 'income') await appendIncome(row);
-    else await appendExpense(parsed.month, row);
+    // Dates are ISO so Sheets parses them correctly regardless of spreadsheet locale
+    if (kind === 'transfer') {
+      await appendTransfer([
+        timestamp,
+        entry.date,
+        entry.method, // From
+        entry.to,
+        String(entry.amount),
+        entry.item, // Note
+      ]);
+    } else {
+      const row = [
+        timestamp, // Timestamp
+        entry.item, // Item
+        entry.category, // Category
+        String(entry.amount), // Amount (IDR)
+        entry.method, // Payment Method
+        entry.date, // Date
+        entry.source, // Source
+      ];
+      if (kind === 'income') await appendIncome(row);
+      else await appendExpense(entry.month, row);
+    }
+
     const headers = new Headers();
     headers.append(
       'Set-Cookie',
-      await selectedMonthCookie.serialize(parsed.month),
+      await selectedMonthCookie.serialize(entry.month),
     );
-    headers.append(
-      'Set-Cookie',
-      await selectedSourceCookie.serialize(parsed.source),
-    );
-    return data(
-      {
-        success: true as const,
-        entry: {
-          item: parsed.item,
-          category: parsed.category,
-          amount: parsed.amount,
-          method: parsed.method,
-          date: parsed.date,
-          source: parsed.source,
-          month: parsed.month,
-          kind,
-        },
-      },
-      { headers },
-    );
+    if (entry.source) {
+      headers.append(
+        'Set-Cookie',
+        await selectedSourceCookie.serialize(entry.source),
+      );
+    }
+    return data({ success: true as const, entry }, { headers });
   } catch (err) {
     if (isNetworkError(err)) {
       return data({
         success: false as const,
         networkError: true as const,
-        pendingData: {
-          month: parsed.month,
-          item: parsed.item,
-          date: parsed.date,
-          amount: parsed.amount,
-          category: parsed.category,
-          method: parsed.method,
-          source: parsed.source,
-          kind,
-        },
+        pendingData: entry,
       });
     }
     log('error', 'action_append_error', {
+      kind,
       error: (err as Error).message,
     });
     return data(
@@ -386,9 +378,11 @@ export default function Index() {
     if (actionData.success) {
       const { entry } = actionData;
       toast.success(
-        entry.kind === 'income'
-          ? `Income saved: ${entry.item} — IDR ${entry.amount.toLocaleString()}`
-          : `Saved to ${formatMonthLabel(entry.month)}: ${entry.item} — IDR ${entry.amount.toLocaleString()}`,
+        entry.kind === 'transfer'
+          ? `Moved IDR ${entry.amount.toLocaleString()}: ${entry.method} → ${entry.to}`
+          : entry.kind === 'income'
+            ? `Income saved: ${entry.item} — IDR ${entry.amount.toLocaleString()}`
+            : `Saved to ${formatMonthLabel(entry.month)}: ${entry.item} — IDR ${entry.amount.toLocaleString()}`,
       );
       if (
         typeof navigator !== 'undefined' &&
@@ -445,6 +439,7 @@ export default function Index() {
         method: formData.get('method') as string,
         source: formData.get('source') as string,
         kind: (formData.get('kind') as string) || 'expense',
+        to: (formData.get('to') as string) || undefined,
       },
     };
     try {
@@ -518,8 +513,8 @@ export default function Index() {
         </div>
       )}
 
-      <div className="mx-4 mb-2 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
-        {(['expense', 'income'] as const).map((k) => (
+      <div className="mx-4 mb-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
+        {(['expense', 'income', 'transfer'] as const).map((k) => (
           <button
             key={k}
             type="button"
@@ -531,7 +526,7 @@ export default function Index() {
                 : 'text-slate-500'
             }`}
           >
-            {k === 'expense' ? 'Expense' : 'Income'}
+            {k === 'expense' ? 'Expense' : k === 'income' ? 'Income' : 'Transfer'}
           </button>
         ))}
       </div>

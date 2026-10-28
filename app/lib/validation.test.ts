@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { expenseEditSchema, expenseSchema, incomeSchema } from './validation';
+import {
+  expenseEditSchema,
+  expenseSchema,
+  incomeSchema,
+  transferSchema
+} from './validation';
 
 const master = {
   categories: ['Food', 'Coffee'],
@@ -89,5 +94,39 @@ describe('incomeSchema', () => {
     const schema = incomeSchema(master);
     expect(schema.safeParse({ ...valid, category: 'Salary' }).success).toBe(true);
     expect(schema.safeParse({ ...valid, category: 'Coffee' }).success).toBe(false);
+  });
+});
+
+describe('transferSchema', () => {
+  const transfer = {
+    month: '2026-10',
+    date: '2026-10-28',
+    amount: '2000000',
+    method: 'BCA',
+    to: 'Cash',
+    item: ' Top up '
+  };
+
+  it('accepts two different methods and trims the note', () => {
+    const result = transferSchema(master).safeParse(transfer);
+    expect(result.success).toBe(true);
+    expect(result.data?.item).toBe('Top up');
+  });
+
+  it('allows an empty or missing note', () => {
+    expect(transferSchema(master).safeParse({ ...transfer, item: '' }).success).toBe(true);
+    expect(transferSchema(master).safeParse({ ...transfer, item: null }).data?.item).toBe('');
+  });
+
+  it('rejects moving money to the same method', () => {
+    const result = transferSchema(master).safeParse({ ...transfer, to: 'BCA' });
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ['to'],
+      message: 'Pick a different pocket'
+    });
+  });
+
+  it('rejects unknown methods', () => {
+    expect(transferSchema(master).safeParse({ ...transfer, to: 'Gopay' }).success).toBe(false);
   });
 });

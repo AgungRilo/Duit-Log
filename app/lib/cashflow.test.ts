@@ -28,6 +28,21 @@ describe('methodFlows', () => {
     ]);
   });
 
+  it('moves transfers between methods without changing the overall net', () => {
+    const flows = methodFlows(
+      [entry('JAGO', 300)],
+      [entry('BCA', 1000)],
+      [
+        { row: 2, timestamp: '', date: '10/1/2026', from: 'BCA', to: 'JAGO', amount: 600, note: '' }
+      ]
+    );
+    expect(flows).toEqual([
+      { method: 'BCA', in: 1000, out: 600, net: 400 },
+      { method: 'JAGO', in: 600, out: 300, net: 300 }
+    ]);
+    expect(flows.reduce((s, f) => s + f.net, 0)).toBe(1000 - 300);
+  });
+
   it('is empty without entries', () => {
     expect(methodFlows([], [])).toEqual([]);
   });

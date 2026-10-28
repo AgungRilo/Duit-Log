@@ -1,4 +1,9 @@
-import { getSheetsClient, toEntries } from './sheets.server';
+import {
+  appendRowCreatingTab,
+  getSheetsClient,
+  isMissingTab,
+  toEntries
+} from './sheets.server';
 import { log } from './logger.server';
 import { monthOfSheetDate } from './dates';
 import type { ExpenseEntry } from './types';
@@ -16,56 +21,9 @@ const INCOME_HEADERS = [
   'Source'
 ];
 
-const isMissingTab = (err: unknown) =>
-  (err as Error).message.includes('Unable to parse range');
-
-async function createIncomeTab(): Promise<void> {
-  const sheets = getSheetsClient();
-  const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-  try {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: INCOME_TAB } } }]
-      }
-    });
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `'${INCOME_TAB}'!A1:G1`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [INCOME_HEADERS] }
-    });
-    log('info', 'sheets_income_created', {});
-  } catch (err) {
-    if ((err as Error).message.includes('already exists')) return;
-    throw err;
-  }
-}
-
 /** Appends one income row (same columns as an expense row) */
 export async function appendIncome(row: string[]): Promise<void> {
-  const sheets = getSheetsClient();
-  const append = () =>
-    sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
-      range: `'${INCOME_TAB}'!A:G`,
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: [row] }
-    });
-  try {
-    try {
-      await append();
-    } catch (err) {
-      if (!isMissingTab(err)) throw err;
-      await createIncomeTab();
-      await append();
-    }
-    log('info', 'sheets_income_append_success', {});
-  } catch (err) {
-    log('error', 'sheets_income_append_error', { error: (err as Error).message });
-    throw err;
-  }
+  await appendRowCreatingTab(INCOME_TAB, INCOME_HEADERS, row);
 }
 
 /** Income dated in `month`, newest first; empty when the tab doesn't exist yet */

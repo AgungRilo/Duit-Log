@@ -28,8 +28,11 @@ interface ExpenseFormProps {
   prefill?: Omit<ExpenseFormValues, 'date'>;
   hiddenFields?: Record<string, string>;
   submitLabel?: string;
-  /** Income uses income categories and "received" wording */
-  kind?: 'expense' | 'income';
+  /**
+   * Income uses income categories and "received" wording; a transfer moves
+   * money between two methods and has no category or source
+   */
+  kind?: 'expense' | 'income' | 'transfer';
 }
 
 export interface ExpenseFormValues {
@@ -102,6 +105,7 @@ export function ExpenseForm({
   kind = 'expense',
 }: ExpenseFormProps) {
   const isIncome = kind === 'income';
+  const isTransfer = kind === 'transfer';
   const categories = isIncome ? options.incomeCategories : options.categories;
   const values = initial ?? prefill;
   const [state, dispatch] = useReducer(reducer, {
@@ -133,16 +137,17 @@ export function ExpenseForm({
     const source = formData.get('source') as string;
     const item = formData.get('item') as string;
     const date = formData.get('date') as string;
+    const to = formData.get('to') as string;
 
-    if (
-      !amount ||
-      !category ||
-      !method ||
-      !source ||
-      !item ||
-      !date
-    ) {
+    const missing = isTransfer
+      ? !amount || !method || !to || !date
+      : !amount || !category || !method || !source || !item || !date;
+    if (missing) {
       toast.error('Please fill in all required fields.');
+      return;
+    }
+    if (isTransfer && method === to) {
+      toast.error('Pick two different pockets.');
       return;
     }
 
@@ -203,13 +208,19 @@ export function ExpenseForm({
       {/* Item */}
       <fieldset>
         <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-          Item
+          {isTransfer ? 'Note (optional)' : 'Item'}
         </label>
         <input
           type="text"
           name="item"
           defaultValue={values?.item}
-          placeholder={isIncome ? 'Where is it from?' : 'What did you buy?'}
+          placeholder={
+            isTransfer
+              ? 'e.g. Top up'
+              : isIncome
+                ? 'Where is it from?'
+                : 'What did you buy?'
+          }
           maxLength={100}
           className="w-full rounded-lg border-2 border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-900"
         />
@@ -219,37 +230,39 @@ export function ExpenseForm({
       </fieldset>
 
       {/* Category */}
-      <fieldset>
-        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-          Category
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          {withValue(categories, values?.category).map((c) => (
-            <label key={c} className="cursor-pointer">
-              <input
-                type="radio"
-                name="category"
-                value={c}
-                defaultChecked={c === values?.category}
-                className="peer sr-only"
-              />
-              <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
-                {c}
-              </div>
-            </label>
-          ))}
-        </div>
-        {errors?.category && (
-          <p className="mt-1 text-xs text-red-500">
-            {errors.category}
-          </p>
-        )}
-      </fieldset>
+      {!isTransfer && (
+        <fieldset>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+            Category
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {withValue(categories, values?.category).map((c) => (
+              <label key={c} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="category"
+                  value={c}
+                  defaultChecked={c === values?.category}
+                  className="peer sr-only"
+                />
+                <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
+                  {c}
+                </div>
+              </label>
+            ))}
+          </div>
+          {errors?.category && (
+            <p className="mt-1 text-xs text-red-500">
+              {errors.category}
+            </p>
+          )}
+        </fieldset>
+      )}
 
       {/* Payment Method */}
       <fieldset>
         <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-          {isIncome ? 'Received in' : 'Payment Method'}
+          {isTransfer ? 'From' : isIncome ? 'Received in' : 'Payment Method'}
         </label>
         <div className="grid grid-cols-3 gap-2">
           {withValue(options.methods, values?.method).map((m) => (
@@ -271,6 +284,33 @@ export function ExpenseForm({
           <p className="mt-1 text-xs text-red-500">{errors.method}</p>
         )}
       </fieldset>
+
+      {/* Transfer destination */}
+      {isTransfer && (
+        <fieldset>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+            To
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {options.methods.map((m) => (
+              <label key={m} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="to"
+                  value={m}
+                  className="peer sr-only"
+                />
+                <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
+                  {m}
+                </div>
+              </label>
+            ))}
+          </div>
+          {errors?.to && (
+            <p className="mt-1 text-xs text-red-500">{errors.to}</p>
+          )}
+        </fieldset>
+      )}
 
       {/* Date */}
       <fieldset>
@@ -326,35 +366,37 @@ export function ExpenseForm({
       </fieldset>
 
       {/* Source */}
-      <fieldset>
-        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-          {isIncome ? 'Received by' : 'Paid from'}
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          {withValue(options.sources, values?.source).map((s) => (
-            <label key={s} className="cursor-pointer">
-              <input
-                type="radio"
-                name="source"
-                value={s}
-                defaultChecked={
-                  s ===
-                  (initial
-                    ? initial.source
-                    : prefill?.source || defaultSource || options.sources[0])
-                }
-                className="peer sr-only"
-              />
-              <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
-                {s}
-              </div>
-            </label>
-          ))}
-        </div>
-        {errors?.source && (
-          <p className="mt-1 text-xs text-red-500">{errors.source}</p>
-        )}
-      </fieldset>
+      {!isTransfer && (
+        <fieldset>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+            {isIncome ? 'Received by' : 'Paid from'}
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {withValue(options.sources, values?.source).map((s) => (
+              <label key={s} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="source"
+                  value={s}
+                  defaultChecked={
+                    s ===
+                    (initial
+                      ? initial.source
+                      : prefill?.source || defaultSource || options.sources[0])
+                  }
+                  className="peer sr-only"
+                />
+                <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
+                  {s}
+                </div>
+              </label>
+            ))}
+          </div>
+          {errors?.source && (
+            <p className="mt-1 text-xs text-red-500">{errors.source}</p>
+          )}
+        </fieldset>
+      )}
 
       {/* Submit */}
       <button
@@ -386,7 +428,12 @@ export function ExpenseForm({
             Saving...
           </span>
         ) : isOnline ? (
-          (submitLabel ?? (isIncome ? 'Save Income' : 'Save Expense'))
+          (submitLabel ??
+            (isTransfer
+              ? 'Save Transfer'
+              : isIncome
+                ? 'Save Income'
+                : 'Save Expense'))
         ) : (
           'Save Offline'
         )}

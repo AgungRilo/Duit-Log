@@ -16,6 +16,8 @@ import { MonthSelector } from '~/components/month-selector';
 import { dayOfMonth, previousMonth } from '~/lib/dates';
 import { getMasterData } from '~/lib/master.server';
 import { getIncomeByMonth } from '~/lib/income.server';
+import { getTransfersByMonth } from '~/lib/transfers.server';
+import type { TransferEntry } from '~/lib/transfers';
 import { methodFlows, type MethodFlow } from '~/lib/cashflow';
 import {
   budgetLevel,
@@ -55,6 +57,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       entries: [] as ExpenseEntry[],
       trend: [] as MonthSummary[],
       income: [] as ExpenseEntry[],
+      transfers: [] as TransferEntry[],
       prevMonth: null as string | null,
       activeMonth,
       months,
@@ -68,14 +71,16 @@ export async function loader({ request }: Route.LoaderArgs) {
   const monthsToRead = trendMonths(months, activeMonth);
 
   try {
-    const [byMonth, income] = await Promise.all([
+    const [byMonth, income, transfers] = await Promise.all([
       getExpensesByMonths(monthsToRead),
-      // Income is optional; a failure shouldn't hide the expense dashboard
+      // Income and transfers are optional; a failure shouldn't hide the expense dashboard
       getIncomeByMonth(activeMonth).catch(() => [] as ExpenseEntry[]),
+      getTransfersByMonth(activeMonth).catch(() => [] as TransferEntry[]),
     ]);
     return data({
       entries: byMonth[activeMonth] ?? [],
       income,
+      transfers,
       // Older months only need totals, which keeps the payload small
       trend: monthsToRead.map((m) => summarizeMonth(m, byMonth[m] ?? [])),
       prevMonth: monthsToRead.includes(prev) ? prev : null,
@@ -88,6 +93,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       entries: [] as ExpenseEntry[],
       trend: [] as MonthSummary[],
       income: [] as ExpenseEntry[],
+      transfers: [] as TransferEntry[],
       prevMonth: null as string | null,
       activeMonth,
       months,
@@ -359,10 +365,12 @@ function CashFlow({
   income,
   spent,
   flows,
+  transfers,
 }: {
   income: number;
   spent: number;
   flows: MethodFlow[];
+  transfers: TransferEntry[];
 }) {
   const net = income - spent;
   const signed = (n: number) => `${n < 0 ? '−' : n > 0 ? '+' : ''}${formatCompact(Math.abs(n))}`;
@@ -423,8 +431,32 @@ function CashFlow({
           </tbody>
         </table>
       )}
+      {transfers.length > 0 && (
+        <div className="mt-3 border-t border-slate-100 pt-2">
+          <p className="mb-1 text-[10px] font-medium text-slate-500">
+            Transfers between pockets
+          </p>
+          <ul className="flex flex-col gap-1">
+            {transfers.map((t) => (
+              <li
+                key={t.row}
+                className="flex items-center justify-between gap-2 text-xs"
+              >
+                <span className="min-w-0 truncate text-slate-600">
+                  {t.from} → {t.to}
+                  {t.note && <span className="text-slate-400"> · {t.note}</span>}
+                </span>
+                <span className="shrink-0 font-medium text-slate-900">
+                  {formatCompact(t.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="mt-2 text-[10px] text-slate-400">
-        Money in and out this month, not account balances.
+        Money in and out this month, not account balances. Transfers move
+        money between pockets and don't count as income or spending.
       </p>
     </section>
   );
@@ -551,6 +583,7 @@ export default function Dashboard() {
   const entries = loaderData.entries as ExpenseEntry[];
   const trend = loaderData.trend as MonthSummary[];
   const income = loaderData.income as ExpenseEntry[];
+  const transfers = loaderData.transfers as TransferEntry[];
   const budgets = loaderData.budgets as Record<string, number>;
   const navigate = useNavigate();
   const [sourceFilter, setSourceFilter] = useState('All');
@@ -571,6 +604,8 @@ export default function Dashboard() {
   const total = filtered.reduce((s, e) => s + e.amount, 0);
   const incomeFiltered = bySource(income);
   const incomeTotal = incomeFiltered.reduce((s, e) => s + e.amount, 0);
+  // Transfers have no source, so they only belong in the household view
+  const transfersShown = sourceFilter === 'All' ? transfers : [];
   const prevSummary = trend.find((t) => t.month === prevMonth);
   const prevTotal = prevSummary ? monthTotal(prevSummary, sourceFilter) : 0;
 
@@ -649,7 +684,11 @@ export default function Dashboard() {
 
       {error && <p className="px-4 pt-3 text-sm text-red-600">{error}</p>}
 
-      {!isOffline && !error && filtered.length === 0 && incomeFiltered.length === 0 ? (
+      {!isOffline &&
+      !error &&
+      filtered.length === 0 &&
+      incomeFiltered.length === 0 &&
+      transfersShown.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
           <span className="text-5xl">📊</span>
           <p className="text-lg font-semibold text-slate-700">
@@ -735,11 +774,12 @@ export default function Dashboard() {
               </div>
             </section>
 
-            {incomeFiltered.length > 0 && (
+            {(incomeFiltered.length > 0 || transfersShown.length > 0) && (
               <CashFlow
                 income={incomeTotal}
                 spent={total}
-                flows={methodFlows(filtered, incomeFiltered)}
+                flows={methodFlows(filtered, incomeFiltered, transfersShown)}
+                transfers={transfersShown}
               />
             )}
 

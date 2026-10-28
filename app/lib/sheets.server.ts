@@ -328,3 +328,61 @@ export async function deleteExpense(month: string, row: number): Promise<void> {
     throw err;
   }
 }
+
+export const isMissingTab = (err: unknown) =>
+  (err as Error).message.includes('Unable to parse range');
+
+function columnLetter(count: number): string {
+  return String.fromCharCode('A'.charCodeAt(0) + count - 1);
+}
+
+/**
+ * Appends a row to a single-tab log (e.g. Income), creating the tab with
+ * `headers` on first use. Rows must have the same width as `headers`.
+ */
+export async function appendRowCreatingTab(
+  tab: string,
+  headers: string[],
+  row: string[]
+): Promise<void> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+  const last = columnLetter(headers.length);
+  const append = () =>
+    sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `'${tab}'!A:${last}`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [row] }
+    });
+
+  try {
+    try {
+      await append();
+    } catch (err) {
+      if (!isMissingTab(err)) throw err;
+      try {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: { requests: [{ addSheet: { properties: { title: tab } } }] }
+        });
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `'${tab}'!A1:${last}1`,
+          valueInputOption: 'RAW',
+          requestBody: { values: [headers] }
+        });
+        log('info', 'sheets_tab_created', { tab });
+      } catch (createErr) {
+        // Another request may have created the tab meanwhile
+        if (!(createErr as Error).message.includes('already exists')) throw createErr;
+      }
+      await append();
+    }
+    log('info', 'sheets_tab_append_success', { tab });
+  } catch (err) {
+    log('error', 'sheets_tab_append_error', { tab, error: (err as Error).message });
+    throw err;
+  }
+}

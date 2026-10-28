@@ -125,6 +125,8 @@ Follow these steps to configure Google Sheets as your datastore:
 
    Income is logged from the **Income** toggle on the Add page into a single `Income` tab (created on the first save) with the same columns as the month tabs. Its categories come from `IncomeCategory` rows in `Master`. The dashboard then shows a **Cash flow** card: income − spending = what's left, plus money in/out per method for the month.
 
+   Moving money between your own pockets (e.g. salary from BCA to JAGO or Cash) uses the **Transfer** toggle and goes to a `Transfers` tab (Timestamp, Date, From, To, Amount, Note), created on the first save. Transfers only shift money between methods in the Cash flow card; they never count as income, spending or against budgets. Log any admin fee as a normal expense.
+
 8. **Share the spreadsheet with the Service Account**
    Click **Share**, paste the `client_email` from step 5, and grant **Editor** access.
 

@@ -39,6 +39,24 @@ export function incomeSchema(master: MasterData) {
   });
 }
 
+/** Validates moving money between two methods; the note is optional */
+export function transferSchema(master: MasterData) {
+  return baseSchema
+    .extend({
+      item: z
+        .string()
+        .max(100, 'Note too long')
+        .nullish()
+        .transform((v) => v?.trim() ?? ''),
+      method: oneOf(master.methods, 'Pick where the money comes from'),
+      to: oneOf(master.methods, 'Pick where the money goes')
+    })
+    .refine((t) => t.method !== t.to, {
+      message: 'Pick a different pocket',
+      path: ['to']
+    });
+}
+
 // Same as expenseSchema, but also accepts the row's current category/method/source
 // so entries using values no longer in the option lists can still be edited
 export function expenseEditSchema(
