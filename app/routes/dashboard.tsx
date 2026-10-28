@@ -7,7 +7,7 @@ import {
   isRouteErrorResponse,
 } from 'react-router';
 import type { Route } from './+types/dashboard';
-import { getExpensesByMonth } from '~/lib/sheets.server';
+import { getExpensesByMonths } from '~/lib/sheets.server';
 import { requireAuth } from '~/lib/auth.server';
 import { resolveActiveMonth } from '~/lib/month.server';
 import { selectedMonthCookie } from '~/lib/cookies.server';
@@ -22,6 +22,17 @@ import {
   type BudgetLevel,
   type BudgetRow,
 } from '~/lib/budget';
+import {
+  average,
+  categoryTrends,
+  monthTotal,
+  percentChange,
+  summarizeMonth,
+  trendMonths,
+  trendSources,
+  type CategoryTrend,
+  type MonthSummary,
+} from '~/lib/trend';
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAuth(request);
@@ -40,7 +51,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (offline) {
     return data({
       entries: [] as ExpenseEntry[],
-      prevEntries: [] as ExpenseEntry[],
+      trend: [] as MonthSummary[],
       prevMonth: null as string | null,
       activeMonth,
       months,
@@ -50,17 +61,16 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const prev = previousMonth(activeMonth);
-  const hasPrev = months.includes(prev);
+  // Active month plus up to five before it, read in one API call
+  const monthsToRead = trendMonths(months, activeMonth);
 
   try {
-    const [entries, prevEntries] = await Promise.all([
-      getExpensesByMonth(activeMonth),
-      hasPrev ? getExpensesByMonth(prev) : Promise.resolve([]),
-    ]);
+    const byMonth = await getExpensesByMonths(monthsToRead);
     return data({
-      entries,
-      prevEntries,
-      prevMonth: hasPrev ? prev : null,
+      entries: byMonth[activeMonth] ?? [],
+      // Older months only need totals, which keeps the payload small
+      trend: monthsToRead.map((m) => summarizeMonth(m, byMonth[m] ?? [])),
+      prevMonth: monthsToRead.includes(prev) ? prev : null,
       activeMonth,
       months,
       budgets,
@@ -68,7 +78,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   } catch {
     return data({
       entries: [] as ExpenseEntry[],
-      prevEntries: [] as ExpenseEntry[],
+      trend: [] as MonthSummary[],
       prevMonth: null as string | null,
       activeMonth,
       months,
@@ -154,6 +164,183 @@ function BudgetList({ rows }: { rows: BudgetRow[] }) {
             </p>
           </li>
         ))}
+      </ul>
+    </section>
+  );
+}
+
+function shortMonth(month: string): string {
+  return monthName(month).slice(0, 3);
+}
+
+function TrendChart({
+  trend,
+  source,
+  projected,
+}: {
+  trend: MonthSummary[];
+  source: string;
+  /** Month-end estimate for the current month, drawn behind its bar */
+  projected: number | null;
+}) {
+  const totals = trend.map((t) => monthTotal(t, source));
+  const last = totals.length - 1;
+  const [selected, setSelected] = useState<number | null>(null);
+  const avg = average(totals.slice(0, -1)) ?? 0;
+  const ghost = projected !== null && projected > totals[last] ? projected : 0;
+  const max = Math.max(...totals, ghost, avg, 0);
+  const shown = selected ?? last;
+  const change = percentChange(totals[last], avg);
+  const pct = (v: number) => (max > 0 ? `${(v / max) * 100}%` : '0');
+
+  return (
+    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="mb-1 flex items-baseline justify-between">
+        <h2 className="text-sm font-semibold text-slate-900">
+          Last {trend.length} months
+        </h2>
+        <span className="text-xs text-slate-500">
+          {monthName(trend[shown].month)} ·{' '}
+          <span className="font-semibold text-slate-900">
+            {formatAmount(totals[shown])}
+          </span>
+        </span>
+      </div>
+      <p className="mb-3 text-[11px] text-slate-500">
+        Avg of previous months {formatAmount(avg)}
+        {change !== null && (
+          <span className={change > 0 ? 'text-red-600' : 'text-emerald-600'}>
+            {' '}
+            · this month {change > 0 ? '▲' : '▼'}{' '}
+            {Math.abs(Math.round(change))}%
+          </span>
+        )}
+      </p>
+      <div>
+        <div
+          className="relative flex h-32 items-end gap-2"
+          onMouseLeave={() => setSelected(null)}
+        >
+          {avg > 0 && (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-slate-500"
+              style={{ bottom: pct(avg) }}
+            />
+          )}
+          {totals.map((value, i) => (
+            <button
+              key={trend[i].month}
+              type="button"
+              aria-label={`${monthName(trend[i].month)}: ${formatAmount(value)}`}
+              onMouseEnter={() => setSelected(i)}
+              onClick={() => setSelected(i)}
+              className="relative flex h-full flex-1 items-end"
+            >
+              {i === last && ghost > 0 && (
+                <span
+                  className="absolute inset-x-0 bottom-0 rounded-t-[4px] border border-dashed border-blue-300 bg-blue-50"
+                  style={{ height: pct(ghost) }}
+                />
+              )}
+              <span
+                className={`relative block w-full rounded-t-[4px] ${
+                  i === shown ? 'bg-blue-700' : 'bg-blue-500'
+                }`}
+                style={{ height: value > 0 ? `max(2px, ${pct(value)})` : 0 }}
+              />
+            </button>
+          ))}
+        </div>
+        <div className="border-t border-slate-300" />
+        <div className="mt-1 flex gap-2 text-[10px] text-slate-400">
+          {trend.map((t) => (
+            <span key={t.month} className="flex-1 text-center">
+              {shortMonth(t.month)}
+            </span>
+          ))}
+        </div>
+      </div>
+      {ghost > 0 && (
+        <p className="mt-2 text-[10px] text-slate-400">
+          Dashed bar: projected month end ({formatCompact(ghost)})
+        </p>
+      )}
+    </section>
+  );
+}
+
+function CategoryTrendList({
+  trends,
+  months,
+  inProgress,
+}: {
+  trends: CategoryTrend[];
+  months: string[];
+  /** The last month isn't over yet, so its numbers are still growing */
+  inProgress: boolean;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-slate-900">Category trends</h2>
+      <p className="mb-3 text-[11px] text-slate-500">
+        This month vs average of previous months
+        {inProgress && ' · month in progress'}
+      </p>
+      <ul className="flex flex-col gap-3">
+        {trends.map((t) => {
+          const max = Math.max(...t.values, 0);
+          const rounded = t.change === null ? null : Math.round(t.change);
+          return (
+            <li key={t.category} className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-slate-700">
+                  {t.category}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  {formatCompact(t.current)}
+                  {t.avgBefore !== null &&
+                    ` · avg ${formatCompact(t.avgBefore)}`}
+                </p>
+              </div>
+              <div
+                className="flex h-6 w-20 shrink-0 items-end gap-0.5"
+                aria-hidden="true"
+                title={months
+                  .map((m, i) => `${shortMonth(m)}: ${formatCompact(t.values[i])}`)
+                  .join(' · ')}
+              >
+                {t.values.map((v, i) => (
+                  <span
+                    key={i}
+                    className={`block flex-1 rounded-t-[2px] ${
+                      i === t.values.length - 1 ? 'bg-blue-600' : 'bg-slate-300'
+                    }`}
+                    style={{
+                      height: max > 0 && v > 0 ? `${Math.max((v / max) * 100, 8)}%` : 0,
+                    }}
+                  />
+                ))}
+              </div>
+              <span
+                className={`w-12 shrink-0 text-right text-[11px] font-semibold ${
+                  rounded === null || rounded === 0
+                    ? 'text-slate-400'
+                    : rounded > 0
+                      ? 'text-red-600'
+                      : 'text-emerald-600'
+                }`}
+              >
+                {rounded === 0
+                  ? '0%'
+                  : rounded !== null
+                    ? `${rounded > 0 ? '▲' : '▼'} ${Math.abs(rounded)}%`
+                    : t.avgBefore === 0 && t.current > 0
+                      ? 'New'
+                      : '—'}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -276,24 +463,21 @@ export default function Dashboard() {
     'offline' in loaderData ? (loaderData.offline as boolean) : false;
   const { activeMonth, months, prevMonth } = loaderData;
   const entries = loaderData.entries as ExpenseEntry[];
-  const prevEntries = loaderData.prevEntries as ExpenseEntry[];
+  const trend = loaderData.trend as MonthSummary[];
   const budgets = loaderData.budgets as Record<string, number>;
   const navigate = useNavigate();
   const [sourceFilter, setSourceFilter] = useState('All');
 
-  const sources = [
-    'All',
-    ...sumBy([...entries, ...prevEntries], 'source').map(([s]) => s),
-  ];
+  const sources = ['All', ...trendSources(trend)];
   const bySource = (list: ExpenseEntry[]) =>
     sourceFilter === 'All'
       ? list
       : list.filter((e) => (e.source || 'Unknown') === sourceFilter);
   const filtered = bySource(entries);
-  const prevFiltered = bySource(prevEntries);
 
   const total = filtered.reduce((s, e) => s + e.amount, 0);
-  const prevTotal = prevFiltered.reduce((s, e) => s + e.amount, 0);
+  const prevSummary = trend.find((t) => t.month === prevMonth);
+  const prevTotal = prevSummary ? monthTotal(prevSummary, sourceFilter) : 0;
 
   const [y, m] = activeMonth.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
@@ -459,6 +643,21 @@ export default function Dashboard() {
             {budgetList.length > 0 && <BudgetList rows={budgetList} />}
 
             <DailyChart month={activeMonth} daily={daily} />
+
+            {trend.length >= 2 && (
+              <>
+                <TrendChart
+                  trend={trend}
+                  source={sourceFilter}
+                  projected={projected}
+                />
+                <CategoryTrendList
+                  trends={categoryTrends(trend, sourceFilter)}
+                  months={trend.map((t) => t.month)}
+                  inProgress={isCurrentMonth}
+                />
+              </>
+            )}
 
             <BreakdownList
               title="By category"

@@ -182,6 +182,14 @@ function toEntry(row: unknown[], rowNumber: number): ExpenseEntry {
   };
 }
 
+// Row 1 is the header, so data row i lives on sheet row i + 2
+function toEntries(values: unknown[][]): ExpenseEntry[] {
+  return values
+    .slice(1)
+    .map((row, i) => toEntry(row, i + 2))
+    .filter((e) => e.item || e.amount);
+}
+
 // Read raw values so dates don't depend on the spreadsheet's locale format
 // (e.g. id-ID renders dates as D/M/YYYY)
 const RAW_READ = {
@@ -200,17 +208,35 @@ export async function getExpensesByMonth(
       range: `'${month}'!A:G`,
       ...RAW_READ
     });
-    const values = res.data.values ?? [];
-    // Row 1 is the header, so data row i lives on sheet row i + 2
-    const entries = values
-      .slice(1)
-      .map((row, i) => toEntry(row, i + 2))
-      .filter((e) => e.item || e.amount);
+    const entries = toEntries(res.data.values ?? []);
     const bounded = limit ? entries.slice(-limit) : entries;
     return bounded.reverse();
   } catch (err) {
     const error = err as Error;
     log('error', 'sheets_get_error', { error: error.message });
+    throw err;
+  }
+}
+
+/** Reads several month tabs in one API call; entries are newest first */
+export async function getExpensesByMonths(
+  months: string[]
+): Promise<Record<string, ExpenseEntry[]>> {
+  if (months.length === 0) return {};
+  try {
+    const sheets = getSheetsClient();
+    const res = await sheets.spreadsheets.values.batchGet({
+      spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
+      ranges: months.map((m) => `'${m}'!A:G`),
+      ...RAW_READ
+    });
+    const ranges = res.data.valueRanges ?? [];
+    return Object.fromEntries(
+      months.map((m, i) => [m, toEntries(ranges[i]?.values ?? []).reverse()])
+    );
+  } catch (err) {
+    const error = err as Error;
+    log('error', 'sheets_batch_get_error', { error: error.message });
     throw err;
   }
 }
