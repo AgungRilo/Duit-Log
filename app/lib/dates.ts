@@ -53,3 +53,13 @@ export function jakartaTimestamp(at: Date = new Date()): string {
   );
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
+
+// Today's date in Asia/Jakarta as "YYYY-MM-DD"
+export function jakartaToday(at: Date = new Date()): string {
+  return jakartaTimestamp(at).slice(0, 10);
+}
+
+export function daysInMonth(month: string): number {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}

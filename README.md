@@ -113,6 +113,16 @@ Follow these steps to configure Google Sheets as your datastore:
    - If a type has no active rows, the defaults in `app/lib/constants.ts` are used.
    - `Budget` (Category rows only) is the monthly limit in IDR. The dashboard shows progress per category (amber at 80%, red at 100%) and the app warns after a save that crosses it. Leave blank for no budget.
 
+   A `Recurring` tab holds monthly bills. They appear on the Add page under **Bills this month** until logged, each with a one-tap **Log** button:
+
+   | Item    | Category  | Amount | Method | Source   | Day | Active |
+   | ------- | --------- | ------ | ------ | -------- | --- | ------ |
+   | Listrik | Utilities | 350000 | JAGO   | Together | 20  | ☑      |
+
+   - `Day` is the due day of the month (clamped to short months); overdue bills are flagged.
+   - A bill counts as logged once the month has an expense with the same `Item` name (any amount), so variable bills can be tapped to adjust the amount first.
+   - Category, Method and Source must match the `Master` tab, otherwise the bill shows what to fix.
+
 8. **Share the spreadsheet with the Service Account**
    Click **Share**, paste the `client_email` from step 5, and grant **Editor** access.
 
@@ -141,6 +151,8 @@ duit-log/
 │   │   ├── logger.server.ts     # Structured JSON logging
 │   │   ├── master.server.ts     # Reads/creates the Master tab (cached)
 │   │   ├── dates.ts             # Date helpers (unit tested)
+│   │   ├── budget.ts            # Budget levels and month-end projection
+│   │   ├── recurring.ts         # Recurring bills: parsing and pending logic
 │   │   ├── constants.ts         # Fallback categories, methods, sources
 │   │   └── validation.ts        # Zod schemas
 │   ├── components/

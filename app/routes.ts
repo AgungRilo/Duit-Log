@@ -9,4 +9,5 @@ export default [
   route('offline', 'routes/offline.tsx'),
   route('api/sync', 'routes/api.sync.tsx'),
   route('api/budget', 'routes/api.budget.tsx'),
+  route('api/recurring', 'routes/api.recurring.tsx'),
 ] satisfies RouteConfig;

@@ -137,6 +137,14 @@ export async function appendExpense(
   month: string,
   row: string[]
 ): Promise<void> {
+  return appendExpenses(month, [row]);
+}
+
+/** Appends several rows in one API call */
+export async function appendExpenses(
+  month: string,
+  rows: string[][]
+): Promise<void> {
   try {
     const sheets = getSheetsClient();
     await sheets.spreadsheets.values.append({
@@ -144,9 +152,9 @@ export async function appendExpense(
       range: `'${month}'!A:G`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: [row] }
+      requestBody: { values: rows }
     });
-    log('info', 'sheets_append_success', { month });
+    log('info', 'sheets_append_success', { month, rows: String(rows.length) });
   } catch (err) {
     const error = err as Error;
     log('error', 'sheets_append_error', { error: error.message });

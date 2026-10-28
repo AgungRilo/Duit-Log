@@ -56,7 +56,9 @@ export function optionsWithUsed(
 }
 
 /** Query params for the Add form to repeat an expense */
-export function repeatSearch(e: ExpenseEntry): string {
+export function repeatSearch(
+  e: Pick<ExpenseEntry, 'item' | 'amount' | 'category' | 'method' | 'source'>
+): string {
   return new URLSearchParams({
     item: e.item,
     amount: String(e.amount),

@@ -21,6 +21,7 @@ import { parseRepeat } from '~/lib/filters';
 import { budgetAlert } from '~/lib/budget';
 import { ExpenseForm } from '~/components/expense-form';
 import { MonthSelector } from '~/components/month-selector';
+import { RecurringBills } from '~/components/recurring-bills';
 import { log } from '~/lib/logger.server';
 import { toast } from 'sonner';
 import { requireAuth } from '~/lib/auth.server';
@@ -255,6 +256,19 @@ export default function Index() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // A repeat link followed while already on this page (e.g. from the bills card)
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    if (repeat) {
+      setPrefill(repeat);
+      setFormKey((k) => k + 1);
+    }
+  }, [location.search]);
+
   // After saving or dismissing a repeat, go back to a blank form at "/"
   function clearPrefill() {
     setPrefill(undefined);
@@ -476,6 +490,8 @@ export default function Index() {
             : `pending expense${pendingCount > 1 ? 's' : ''}`}
         </div>
       )}
+
+      <RecurringBills month={selectedMonth} refreshKey={formKey} />
 
       {prefill && (
         <div className="mx-4 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
