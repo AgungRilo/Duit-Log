@@ -1,7 +1,6 @@
 import { useReducer, useEffect, useCallback } from 'react';
 import {
   data,
-  Link,
   useLoaderData,
   useNavigate,
   useRouteError,
@@ -14,6 +13,17 @@ import { resolveActiveMonth } from '~/lib/month.server';
 import { selectedMonthCookie } from '~/lib/cookies.server';
 import type { ExpenseEntry } from '~/lib/types';
 import { getMasterData } from '~/lib/master.server';
+import type { MasterData } from '~/lib/master';
+import {
+  ALL,
+  EMPTY_FILTERS,
+  filterEntries,
+  hasActiveFilters,
+  optionsWithUsed,
+  repeatSearch,
+  type EntryFilters,
+} from '~/lib/filters';
+import { Search, X } from 'lucide-react';
 import { ExpenseCard } from '~/components/expense-card';
 import { MonthSelector } from '~/components/month-selector';
 import { getPendingCount } from '~/lib/offline-queue';
@@ -29,7 +39,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     request.headers.get('Cookie'),
   );
 
-  const [{ months, activeMonth, offline }, { sources }] = await Promise.all([
+  const [{ months, activeMonth, offline }, master] = await Promise.all([
     resolveActiveMonth(monthParam ?? cookieMonth),
     getMasterData(),
   ]);
@@ -39,24 +49,60 @@ export async function loader({ request }: Route.LoaderArgs) {
       entries: [] as ExpenseEntry[],
       activeMonth,
       months,
-      sources,
+      master,
       offline: true,
     });
   }
 
   try {
-    const LIMIT = 20;
-    const entries = await getExpensesByMonth(activeMonth, LIMIT);
-    return data({ entries, activeMonth, months, sources });
+    // Whole month so search covers every entry; the list renders in pages
+    const entries = await getExpensesByMonth(activeMonth);
+    return data({ entries, activeMonth, months, master });
   } catch {
     return data({
       entries: [] as ExpenseEntry[],
       activeMonth,
       months,
-      sources,
+      master,
       error: 'Failed to load expenses',
     });
   }
+}
+
+const PAGE_SIZE = 20;
+
+function FilterSelect({
+  label,
+  allLabel,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={`Filter by ${label.toLowerCase()}`}
+      className={`min-w-0 flex-1 rounded-lg border-2 px-2 py-1.5 text-xs font-medium outline-none focus:border-slate-900 ${
+        value === ALL
+          ? 'border-slate-200 bg-white text-slate-600'
+          : 'border-slate-900 bg-slate-900 text-white'
+      }`}
+    >
+      <option value={ALL}>{allLabel}</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 export default function History() {
@@ -68,18 +114,21 @@ export default function History() {
   const entries = loaderData.entries as ExpenseEntry[];
   const activeMonth = loaderData.activeMonth as string;
   const months = loaderData.months as string[];
-  const sources = loaderData.sources as string[];
+  const master = loaderData.master as MasterData;
   const navigate = useNavigate();
 
   type State = {
-    sourceFilter: string;
+    filters: EntryFilters;
+    visible: number;
     pendingCount: number;
     isOnline: boolean;
     isSyncing: boolean;
     cachedEntries: ExpenseEntry[];
   };
   type Action =
-    | { type: 'SET_SOURCE_FILTER'; filter: string }
+    | { type: 'SET_FILTER'; key: keyof EntryFilters; value: string }
+    | { type: 'RESET_FILTERS' }
+    | { type: 'SHOW_MORE' }
     | { type: 'SET_PENDING_COUNT'; count: number }
     | { type: 'SET_ONLINE'; online: boolean }
     | { type: 'SET_SYNCING'; syncing: boolean }
@@ -88,7 +137,10 @@ export default function History() {
   const [state, dispatch] = useReducer(
     (s: State, a: Action): State => {
       switch (a.type) {
-        case 'SET_SOURCE_FILTER': return { ...s, sourceFilter: a.filter };
+        case 'SET_FILTER':
+          return { ...s, filters: { ...s.filters, [a.key]: a.value }, visible: PAGE_SIZE };
+        case 'RESET_FILTERS': return { ...s, filters: EMPTY_FILTERS, visible: PAGE_SIZE };
+        case 'SHOW_MORE': return { ...s, visible: s.visible + PAGE_SIZE };
         case 'SET_PENDING_COUNT': return { ...s, pendingCount: a.count };
         case 'SET_ONLINE': return { ...s, isOnline: a.online };
         case 'SET_SYNCING': return { ...s, isSyncing: a.syncing };
@@ -96,14 +148,17 @@ export default function History() {
       }
     },
     {
-      sourceFilter: 'All',
+      filters: EMPTY_FILTERS,
+      visible: PAGE_SIZE,
       pendingCount: 0,
       isOnline: true,
       isSyncing: false,
       cachedEntries: [],
     },
   );
-  const { sourceFilter, pendingCount, isOnline, isSyncing, cachedEntries } = state;
+  const { filters, visible, pendingCount, isOnline, isSyncing, cachedEntries } = state;
+  const setFilter = (key: keyof EntryFilters, value: string) =>
+    dispatch({ type: 'SET_FILTER', key, value });
 
   const refreshPendingCount = useCallback(async () => {
     try {
@@ -186,10 +241,20 @@ export default function History() {
 
   const displayEntries = isOffline && cachedEntries.length > 0 ? cachedEntries : entries;
   const isShowingCached = isOffline && cachedEntries.length > 0;
-  const filtered =
-    sourceFilter === 'All'
-      ? displayEntries
-      : displayEntries.filter((e) => e.source === sourceFilter);
+  const filtered = filterEntries(
+    displayEntries.filter((e) => e.timestamp !== '' && e.item !== ''),
+    filters,
+  );
+  const filtering = hasActiveFilters(filters);
+  const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0);
+  const categoryOptions = optionsWithUsed(
+    master.categories,
+    displayEntries.map((e) => e.category),
+  );
+  const methodOptions = optionsWithUsed(
+    master.methods,
+    displayEntries.map((e) => e.method),
+  );
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col bg-white">
       <header className="flex justify-between items-center shrink-0 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-2">
@@ -222,12 +287,53 @@ export default function History() {
         </div>
       )}
 
+      <div className="px-4 pb-2">
+        <div className="flex items-center gap-2 rounded-lg border-2 border-slate-200 px-3 focus-within:border-slate-900">
+          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+          <input
+            type="search"
+            value={filters.query}
+            onChange={(e) => setFilter('query', e.target.value)}
+            placeholder="Search item, category, method"
+            aria-label="Search expenses"
+            className="w-full bg-transparent py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 [&::-webkit-search-cancel-button]:hidden"
+          />
+          {filters.query && (
+            <button
+              type="button"
+              onClick={() => setFilter('query', '')}
+              aria-label="Clear search"
+              className="text-slate-400 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-2 px-4 pb-2">
+        <FilterSelect
+          label="Category"
+          allLabel="All categories"
+          value={filters.category}
+          options={categoryOptions}
+          onChange={(v) => setFilter('category', v)}
+        />
+        <FilterSelect
+          label="Method"
+          allLabel="All methods"
+          value={filters.method}
+          options={methodOptions}
+          onChange={(v) => setFilter('method', v)}
+        />
+      </div>
+
       <div className="flex gap-1 overflow-x-auto px-4 pb-2">
-        {['All', ...sources].map((s) => (
+        {[ALL, ...master.sources].map((s) => (
           <button
             key={s}
-            onClick={() => dispatch({ type: 'SET_SOURCE_FILTER', filter: s })}
-            className={`min-w-16 flex-1 shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${sourceFilter === s
+            onClick={() => setFilter('source', s)}
+            className={`min-w-16 flex-1 shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${filters.source === s
                 ? 'bg-slate-900 text-white'
                 : 'bg-slate-100 text-slate-600'
               }`}
@@ -237,37 +343,67 @@ export default function History() {
         ))}
       </div>
 
+      {filtering && (
+        <div className="flex items-center justify-between px-4 pb-1 text-xs text-slate-500">
+          <span>
+            {filtered.length} result{filtered.length === 1 ? '' : 's'} ·{' '}
+            <span className="font-semibold text-slate-900">
+              IDR {new Intl.NumberFormat('id-ID').format(filteredTotal)}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'RESET_FILTERS' })}
+            className="font-medium text-slate-700 underline-offset-2 hover:underline"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+
       {error && <p className="px-4 text-sm text-red-600">{error}</p>}
 
       {filtered.length === 0 && !error ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
           <span className="text-5xl">🧾</span>
           <p className="text-lg font-semibold text-slate-700">
-            {isOffline ? 'No cached history for this month' : 'No expenses yet'}
+            {filtering && displayEntries.length > 0
+              ? 'No matching expenses'
+              : isOffline
+                ? 'No cached history for this month'
+                : 'No expenses yet'}
           </p>
           <p className="text-sm text-slate-400">
-            {isOffline
-              ? 'Visit this month while online to cache it.'
-              : 'Start logging your expenses from the Add tab.'}
+            {filtering && displayEntries.length > 0
+              ? 'Try a different search or reset the filters.'
+              : isOffline
+                ? 'Visit this month while online to cache it.'
+                : 'Start logging your expenses from the Add tab.'}
           </p>
         </div>
       ) : (
         <div className="flex flex-col gap-2 px-4 pt-2 pb-4">
-          {filtered
-            .filter((entry) => entry.timestamp !== "" && entry.item !== "") // Hanya ambil yang ada isinya
-            .map((entry, i) =>
-              entry.row && !isOffline ? (
-                <Link
-                  key={`${entry.timestamp}-${i}`}
-                  to={`/edit?month=${activeMonth}&row=${entry.row}`}
-                  aria-label={`Edit ${entry.item}`}
-                >
-                  <ExpenseCard entry={entry} />
-                </Link>
-              ) : (
-                <ExpenseCard key={`${entry.timestamp}-${i}`} entry={entry} />
-              ),
-            )}
+          {filtered.slice(0, visible).map((entry, i) => (
+            <ExpenseCard
+              key={`${entry.timestamp}-${i}`}
+              entry={entry}
+              editTo={
+                entry.row && !isOffline
+                  ? `/edit?month=${activeMonth}&row=${entry.row}`
+                  : undefined
+              }
+              repeatTo={isOffline ? undefined : `/?${repeatSearch(entry)}`}
+            />
+          ))}
+          {filtered.length > visible && (
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'SHOW_MORE' })}
+              className="rounded-xl border-2 border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Show more ({filtered.length - visible} left)
+            </button>
+          )}
         </div>
       )}
     </main>

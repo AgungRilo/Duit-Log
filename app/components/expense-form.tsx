@@ -24,6 +24,8 @@ interface ExpenseFormProps {
   onOfflineSubmit?: (formData: FormData) => Promise<void>;
   /** Pre-fills the form for editing an existing expense */
   initial?: ExpenseFormValues;
+  /** Pre-fills a new expense (date stays today), e.g. when repeating one */
+  prefill?: Omit<ExpenseFormValues, 'date'>;
   hiddenFields?: Record<string, string>;
   submitLabel?: string;
 }
@@ -92,13 +94,15 @@ export function ExpenseForm({
   isOnline = true,
   onOfflineSubmit,
   initial,
+  prefill,
   hiddenFields,
   submitLabel = 'Save Expense',
 }: ExpenseFormProps) {
+  const values = initial ?? prefill;
   const [state, dispatch] = useReducer(reducer, {
     date: initial ? fromDateString(initial.date) : new Date(),
     calendarOpen: false,
-    amount: initial ? formatAmount(String(initial.amount)) : '',
+    amount: values?.amount ? formatAmount(String(values.amount)) : '',
   });
 
   const maxDate = selectedMonth
@@ -198,7 +202,7 @@ export function ExpenseForm({
         <input
           type="text"
           name="item"
-          defaultValue={initial?.item}
+          defaultValue={values?.item}
           placeholder="What did you buy?"
           maxLength={100}
           className="w-full rounded-lg border-2 border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-900"
@@ -214,13 +218,13 @@ export function ExpenseForm({
           Category
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {withValue(options.categories, initial?.category).map((c) => (
+          {withValue(options.categories, values?.category).map((c) => (
             <label key={c} className="cursor-pointer">
               <input
                 type="radio"
                 name="category"
                 value={c}
-                defaultChecked={c === initial?.category}
+                defaultChecked={c === values?.category}
                 className="peer sr-only"
               />
               <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
@@ -242,13 +246,13 @@ export function ExpenseForm({
           Payment Method
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {withValue(options.methods, initial?.method).map((m) => (
+          {withValue(options.methods, values?.method).map((m) => (
             <label key={m} className="cursor-pointer">
               <input
                 type="radio"
                 name="method"
                 value={m}
-                defaultChecked={m === initial?.method}
+                defaultChecked={m === values?.method}
                 className="peer sr-only"
               />
               <div className="rounded-lg bg-slate-100 py-2 text-center text-xs font-medium text-slate-600 transition-colors peer-checked:bg-slate-900 peer-checked:text-white">
@@ -321,14 +325,17 @@ export function ExpenseForm({
           Paid from
         </label>
         <div className="grid grid-cols-3 gap-2">
-          {withValue(options.sources, initial?.source).map((s) => (
+          {withValue(options.sources, values?.source).map((s) => (
             <label key={s} className="cursor-pointer">
               <input
                 type="radio"
                 name="source"
                 value={s}
                 defaultChecked={
-                  s === (initial?.source ?? defaultSource ?? options.sources[0])
+                  s ===
+                  (initial
+                    ? initial.source
+                    : prefill?.source || defaultSource || options.sources[0])
                 }
                 className="peer sr-only"
               />

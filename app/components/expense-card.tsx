@@ -1,3 +1,5 @@
+import { Link } from 'react-router';
+import { Repeat } from 'lucide-react';
 import type { ExpenseEntry } from '~/lib/types';
 
 const categoryColors: Record<string, string> = {
@@ -66,11 +68,23 @@ function relativeTime(timestamp: string): string {
   return `${diffWeek}w ago`;
 }
 
-export function ExpenseCard({ entry }: { entry: ExpenseEntry }) {
+export function ExpenseCard({
+  entry,
+  editTo,
+  repeatTo,
+}: {
+  entry: ExpenseEntry;
+  /** Makes the card body a link to edit the entry */
+  editTo?: string;
+  /** Shows a repeat button linking to a prefilled Add form */
+  repeatTo?: string;
+}) {
   const colorClass = categoryColors[entry.category] ?? categoryColors.Other;
+  const bodyClass =
+    'flex min-w-0 flex-1 items-center justify-between px-4 py-3';
 
-  return (
-    <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+  const body = (
+    <>
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="text-lg font-semibold text-slate-900">
           {formatAmount(entry.amount)}
@@ -102,6 +116,28 @@ export function ExpenseCard({ entry }: { entry: ExpenseEntry }) {
           {relativeTime(entry.timestamp)}
         </span>
       </div>
+    </>
+  );
+
+  return (
+    <div className="flex items-stretch rounded-xl border border-slate-100 bg-white shadow-sm">
+      {editTo ? (
+        <Link to={editTo} aria-label={`Edit ${entry.item}`} className={bodyClass}>
+          {body}
+        </Link>
+      ) : (
+        <div className={bodyClass}>{body}</div>
+      )}
+      {repeatTo && (
+        <Link
+          to={repeatTo}
+          aria-label={`Log ${entry.item} again`}
+          title="Log again"
+          className="flex shrink-0 items-center border-l border-slate-100 px-3 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-900"
+        >
+          <Repeat className="h-4 w-4" />
+        </Link>
+      )}
     </div>
   );
 }

@@ -3,6 +3,8 @@ import {
   data,
   useActionData,
   useLoaderData,
+  useLocation,
+  useNavigate,
   useNavigation,
   useRouteError,
   isRouteErrorResponse,
@@ -15,6 +17,7 @@ import {
 import { expenseSchema } from '~/lib/validation';
 import { getMasterData } from '~/lib/master.server';
 import { jakartaTimestamp } from '~/lib/dates';
+import { parseRepeat } from '~/lib/filters';
 import { ExpenseForm } from '~/components/expense-form';
 import { MonthSelector } from '~/components/month-selector';
 import { log } from '~/lib/logger.server';
@@ -85,6 +88,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     months,
     activeMonth,
     master,
+    // Set when arriving from a history card's repeat button
+    prefill: parseRepeat(new URL(request.url).searchParams, master),
     defaultSource: master.sources.includes(cookieSource)
       ? (cookieSource as string)
       : master.sources[0],
@@ -198,7 +203,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Index() {
-  const { months, activeMonth, master, defaultSource } =
+  const { months, activeMonth, master, defaultSource, prefill: repeat } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as
     | ActionData
@@ -208,6 +213,15 @@ export default function Index() {
   const amountRef = useRef<HTMLInputElement>(null);
 
   const [selectedMonth, setSelectedMonth] = useState(activeMonth);
+  const [prefill, setPrefill] = useState(repeat ?? undefined);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // After saving or dismissing a repeat, go back to a blank form at "/"
+  function clearPrefill() {
+    setPrefill(undefined);
+    if (location.search) navigate('/', { replace: true });
+  }
   const [formKey, setFormKey] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
@@ -304,6 +318,7 @@ export default function Index() {
       ) {
         navigator.vibrate(50);
       }
+      clearPrefill();
       setFormKey((k) => k + 1);
       setTimeout(() => amountRef.current?.focus(), 100);
     } else if ('networkError' in actionData && actionData.networkError) {
@@ -370,6 +385,7 @@ export default function Index() {
         navigator.vibrate(50);
       }
 
+      clearPrefill();
       setFormKey((k) => k + 1);
       setTimeout(() => amountRef.current?.focus(), 100);
     } catch (error) {
@@ -420,8 +436,28 @@ export default function Index() {
         </div>
       )}
 
+      {prefill && (
+        <div className="mx-4 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="truncate">
+            Repeating <span className="font-semibold text-slate-900">{prefill.item}</span>{' '}
+            — check and save
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              clearPrefill();
+              setFormKey((k) => k + 1);
+            }}
+            className="shrink-0 font-medium text-slate-700 underline-offset-2 hover:underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <ExpenseForm
         key={formKey}
+        prefill={prefill}
         errors={errors}
         isSubmitting={isSubmitting}
         amountRef={amountRef}
